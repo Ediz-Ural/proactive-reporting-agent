@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: reporting_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_DATABASE: ${DB_NAME:-reporting_agent}
+      MYSQL_USER: ${DB_USER:-reporter}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  adminer:
+    image: adminer:latest
+    container_name: reporting_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mysql
+
+  app:
+    build: .
+    container_name: reporting_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DB_TYPE=mysql
+      - DB_HOST=mysql
+    volumes:
+      - .:/app
+      - app_data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
+    command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  mysql_data:
+  app_data:
