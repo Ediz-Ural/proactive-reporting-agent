@@ -7,9 +7,9 @@ pass state through unchanged.
 
 Full pipeline:
     START
-      └─► orchestrator
-            └─► data_collector
-                  └─► data_quality ──► [invalid?] ──► END (error)
+      └─► data_collector
+            └─► data_quality ──► [invalid?] ──► END (error)
+                  └─► orchestrator (creates analysis plan from raw_data)
                         └─► analyst
                               └─► rag
                                     └─► writer
@@ -50,7 +50,7 @@ def route_after_quality(state: AgentState) -> str:
     if not qr.get("is_valid", True) and qr.get("errors"):
         logger.warning("Data quality check FAILED — aborting pipeline")
         return "end_with_error"
-    return "analyst"
+    return "orchestrator"
 
 
 def route_after_evaluator(state: AgentState) -> str:
@@ -70,7 +70,16 @@ def route_after_evaluator(state: AgentState) -> str:
 
 # ── Real node imports (lazy, to avoid circular imports) ───────────────────────
 
+def orchestrator_node(state: AgentState) -> dict:
+    """Run the Orchestrator Agent to create an analysis plan."""
+    from src.agents.orchestrator import OrchestratorAgent
+
+    agent = OrchestratorAgent()
+    return agent.plan(state)
+
+
 def data_collector_node(state: AgentState) -> dict:
+    """Run the Data Collector Agent to fetch raw data."""
     from src.agents.data_collector import DataCollectorAgent
 
     agent = DataCollectorAgent()
@@ -87,6 +96,14 @@ def data_quality_node(state: AgentState) -> dict:
     return {"quality_report": report, "current_agent": "data_quality"}
 
 
+def analyst_node(state: AgentState) -> dict:
+    """Run the Analyst Agent to produce analysis results."""
+    from src.agents.analyst import AnalystAgent
+
+    agent = AnalystAgent()
+    return agent.analyse(state)
+
+
 # ── Graph construction ────────────────────────────────────────────────────────
 
 def build_graph() -> StateGraph:
@@ -94,10 +111,10 @@ def build_graph() -> StateGraph:
     graph = StateGraph(AgentState)
 
     # Register nodes
-    graph.add_node("orchestrator", _stub("orchestrator"))
+    graph.add_node("orchestrator", orchestrator_node)
     graph.add_node("data_collector", data_collector_node)
     graph.add_node("data_quality", data_quality_node)
-    graph.add_node("analyst", _stub("analyst"))
+    graph.add_node("analyst", analyst_node)
     graph.add_node("rag", _stub("rag"))
     graph.add_node("writer", _stub("writer"))
     graph.add_node("evaluator", _stub("evaluator"))
@@ -105,17 +122,17 @@ def build_graph() -> StateGraph:
     graph.add_node("feedback", _stub("feedback"))
 
     # Linear edges
-    graph.add_edge(START, "orchestrator")
-    graph.add_edge("orchestrator", "data_collector")
+    graph.add_edge(START, "data_collector")
     graph.add_edge("data_collector", "data_quality")
 
     # Conditional: quality gate
     graph.add_conditional_edges(
         "data_quality",
         route_after_quality,
-        {"analyst": "analyst", "end_with_error": END},
+        {"orchestrator": "orchestrator", "end_with_error": END},
     )
 
+    graph.add_edge("orchestrator", "analyst")
     graph.add_edge("analyst", "rag")
     graph.add_edge("rag", "writer")
     graph.add_edge("writer", "evaluator")
@@ -163,6 +180,7 @@ def run_pipeline(
         "raw_data": None,
         "quality_report": None,
         "analysis_results": None,
+        "analysis_plan": None,
         "historical_context": None,
         "draft_report": None,
         "evaluation": None,

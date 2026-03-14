@@ -199,18 +199,32 @@ class DataQualityAgent:
         warnings: list[str],
         errors: list[str],
     ) -> int:
-        """Count duplicate (order_id, product_id) pairs in top_products + daily_sales."""
-        records = data.get("top_products", [])
-        if not records:
+        """Check for duplicate (order_id, product_id) pairs via DB query."""
+        try:
+            from src.tools.sql_tools import execute_query
+
+            period = data.get("period", {})
+            start = period.get("start", "1970-01-01")
+            end = period.get("end", "2099-12-31")
+            df = execute_query(
+                """
+                SELECT order_id, product_id, COUNT(*) as cnt
+                FROM orders
+                WHERE order_date BETWEEN :start_date AND :end_date
+                GROUP BY order_id, product_id
+                HAVING cnt > 1
+                """,
+                {"start_date": start, "end_date": end},
+            )
+            dupes = len(df)
+            if dupes > 0:
+                warnings.append(
+                    f"{dupes} duplicate (order_id, product_id) pair(s) found in orders"
+                )
+            return dupes
+        except Exception as exc:
+            warnings.append(f"Duplicate check skipped: {exc}")
             return 0
-        df = pd.DataFrame(records)
-        if "product_id" not in df.columns:
-            return 0
-        # In the top_products view, product_id should be unique per query
-        dupes = int(df.duplicated(subset=["product_id"]).sum())
-        if dupes > 0:
-            warnings.append(f"{dupes} duplicate product_id(s) in top_products result")
-        return dupes
 
     def _check_numeric_types(
         self,

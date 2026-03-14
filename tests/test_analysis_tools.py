@@ -19,10 +19,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.tools.analysis_tools import (
     calculate_category_performance,
     calculate_period_comparison,
+    calculate_rfm_segments,
     calculate_simple_forecast,
     calculate_trend,
+    decompose_time_series,
     detect_anomalies_iqr,
+    detect_anomalies_isolation_forest,
     detect_anomalies_zscore,
+    forecast_with_prophet,
 )
 
 
@@ -231,3 +235,209 @@ class TestCalculateSimpleForecast:
     def test_empty_df(self):
         result = calculate_simple_forecast(pd.DataFrame(), "order_date", "total_sales")
         assert result.empty
+
+
+# ── Fixtures for new tests ───────────────────────────────────────────────────
+
+@pytest.fixture
+def seasonal_sales_df() -> pd.DataFrame:
+    """30-day sales with weekly seasonality pattern."""
+    dates = pd.date_range("2024-01-01", periods=30, freq="D")
+    # Base trend + weekly pattern
+    base = np.linspace(100, 200, 30)
+    seasonal = 30 * np.sin(2 * np.pi * np.arange(30) / 7)
+    noise = np.random.default_rng(42).normal(0, 5, 30)
+    sales = base + seasonal + noise
+    return pd.DataFrame({"order_date": dates, "total_sales": sales, "total_profit": sales * 0.2})
+
+
+@pytest.fixture
+def customer_orders_df() -> pd.DataFrame:
+    """Simulated per-order customer data for RFM testing."""
+    rng = np.random.default_rng(42)
+    n = 100
+    return pd.DataFrame({
+        "customer_id": [f"CUST-{rng.integers(1, 21):02d}" for _ in range(n)],
+        "order_date": pd.date_range("2024-01-01", periods=n, freq="D")[:n],
+        "sales": rng.uniform(10, 500, n).round(2),
+    })
+
+
+# ── detect_anomalies_isolation_forest ────────────────────────────────────────
+
+class TestDetectAnomaliesIsolationForest:
+    def test_detects_known_anomaly(self, sales_with_anomaly_df):
+        result = detect_anomalies_isolation_forest(
+            sales_with_anomaly_df, ["total_sales"], contamination=0.1,
+        )
+        assert not result.empty
+        assert result["total_sales"].max() > 1000
+
+    def test_returns_dataframe(self, sales_with_anomaly_df):
+        result = detect_anomalies_isolation_forest(
+            sales_with_anomaly_df, ["total_sales"],
+        )
+        assert isinstance(result, pd.DataFrame)
+
+    def test_has_anomaly_score_column(self, sales_with_anomaly_df):
+        result = detect_anomalies_isolation_forest(
+            sales_with_anomaly_df, ["total_sales"],
+        )
+        if not result.empty:
+            assert "anomaly_score" in result.columns
+            assert "is_anomaly" in result.columns
+
+    def test_multivariate(self, seasonal_sales_df):
+        result = detect_anomalies_isolation_forest(
+            seasonal_sales_df, ["total_sales", "total_profit"],
+        )
+        assert isinstance(result, pd.DataFrame)
+
+    def test_empty_df(self):
+        result = detect_anomalies_isolation_forest(pd.DataFrame(), ["total_sales"])
+        assert result.empty
+
+    def test_insufficient_data(self):
+        df = pd.DataFrame({"total_sales": [1, 2, 3]})
+        result = detect_anomalies_isolation_forest(df, ["total_sales"])
+        assert result.empty
+
+    def test_missing_columns(self, sales_with_anomaly_df):
+        result = detect_anomalies_isolation_forest(
+            sales_with_anomaly_df, ["nonexistent"],
+        )
+        assert result.empty
+
+
+# ── forecast_with_prophet ────────────────────────────────────────────────────
+
+class TestForecastWithProphet:
+    def test_returns_dict(self, upward_sales_df):
+        result = forecast_with_prophet(upward_sales_df, "order_date", "total_sales", periods=3)
+        assert isinstance(result, dict)
+
+    def test_has_forecast_key(self, upward_sales_df):
+        result = forecast_with_prophet(upward_sales_df, "order_date", "total_sales", periods=3)
+        assert "forecast" in result
+        assert len(result["forecast"]) == 3
+
+    def test_has_method_key(self, upward_sales_df):
+        result = forecast_with_prophet(upward_sales_df, "order_date", "total_sales", periods=3)
+        assert "method" in result
+        assert result["method"] in ("prophet", "linear_regression")
+
+    def test_has_trend_direction(self, upward_sales_df):
+        result = forecast_with_prophet(upward_sales_df, "order_date", "total_sales", periods=3)
+        assert result["trend_direction"] in ("up", "down", "stable")
+
+    def test_has_model_metrics(self, upward_sales_df):
+        result = forecast_with_prophet(upward_sales_df, "order_date", "total_sales", periods=5)
+        assert "model_metrics" in result
+
+    def test_forecast_entries_have_keys(self, upward_sales_df):
+        result = forecast_with_prophet(upward_sales_df, "order_date", "total_sales", periods=3)
+        for entry in result["forecast"]:
+            assert "date" in entry
+            assert "predicted" in entry
+            assert "lower" in entry
+            assert "upper" in entry
+
+    def test_empty_df(self):
+        result = forecast_with_prophet(pd.DataFrame(), "order_date", "total_sales")
+        assert result == {}
+
+    def test_insufficient_data(self):
+        df = pd.DataFrame({
+            "order_date": pd.date_range("2024-01-01", periods=3),
+            "total_sales": [100, 200, 300],
+        })
+        result = forecast_with_prophet(df, "order_date", "total_sales")
+        assert result == {}
+
+
+# ── decompose_time_series ────────────────────────────────────────────────────
+
+class TestDecomposeTimeSeries:
+    def test_returns_dict(self, seasonal_sales_df):
+        result = decompose_time_series(seasonal_sales_df, "order_date", "total_sales", period=7)
+        assert isinstance(result, dict)
+
+    def test_has_components(self, seasonal_sales_df):
+        result = decompose_time_series(seasonal_sales_df, "order_date", "total_sales", period=7)
+        assert "trend" in result
+        assert "seasonal" in result
+        assert "residual" in result
+
+    def test_seasonal_strength_calculated(self, seasonal_sales_df):
+        result = decompose_time_series(seasonal_sales_df, "order_date", "total_sales", period=7)
+        assert "seasonal_strength" in result
+        assert 0 <= result["seasonal_strength"] <= 1
+
+    def test_trend_direction(self, seasonal_sales_df):
+        result = decompose_time_series(seasonal_sales_df, "order_date", "total_sales", period=7)
+        assert result["trend_direction"] in ("up", "down", "stable")
+
+    def test_is_seasonal_flag(self, seasonal_sales_df):
+        result = decompose_time_series(seasonal_sales_df, "order_date", "total_sales", period=7)
+        assert isinstance(result["is_seasonal"], bool)
+
+    def test_empty_df(self):
+        result = decompose_time_series(pd.DataFrame(), "order_date", "total_sales")
+        assert result == {}
+
+    def test_insufficient_data(self):
+        df = pd.DataFrame({
+            "order_date": pd.date_range("2024-01-01", periods=5),
+            "total_sales": [100, 200, 150, 180, 120],
+        })
+        result = decompose_time_series(df, "order_date", "total_sales", period=7)
+        assert result == {}
+
+    def test_components_same_length(self, seasonal_sales_df):
+        result = decompose_time_series(seasonal_sales_df, "order_date", "total_sales", period=7)
+        if result:
+            assert len(result["trend"]) == len(result["seasonal"]) == len(result["residual"])
+
+
+# ── calculate_rfm_segments ───────────────────────────────────────────────────
+
+class TestCalculateRfmSegments:
+    def test_returns_dataframe(self, customer_orders_df):
+        result = calculate_rfm_segments(customer_orders_df)
+        assert isinstance(result, pd.DataFrame)
+
+    def test_has_required_columns(self, customer_orders_df):
+        result = calculate_rfm_segments(customer_orders_df)
+        for col in ["customer_id", "recency_days", "frequency", "monetary",
+                     "r_score", "f_score", "m_score", "rfm_segment", "segment_label"]:
+            assert col in result.columns, f"Missing column: {col}"
+
+    def test_scores_in_range(self, customer_orders_df):
+        result = calculate_rfm_segments(customer_orders_df)
+        for col in ["r_score", "f_score", "m_score"]:
+            assert result[col].between(1, 5).all(), f"{col} values not in 1-5 range"
+
+    def test_segment_labels_valid(self, customer_orders_df):
+        result = calculate_rfm_segments(customer_orders_df)
+        valid_labels = {"Champions", "Loyal", "New", "At Risk", "Lost", "Potential"}
+        assert set(result["segment_label"].unique()).issubset(valid_labels)
+
+    def test_unique_customers(self, customer_orders_df):
+        result = calculate_rfm_segments(customer_orders_df)
+        assert len(result) == customer_orders_df["customer_id"].nunique()
+
+    def test_empty_df(self):
+        result = calculate_rfm_segments(pd.DataFrame())
+        assert result.empty
+
+    def test_missing_columns(self):
+        df = pd.DataFrame({"a": [1, 2, 3]})
+        result = calculate_rfm_segments(df)
+        assert result.empty
+
+    def test_custom_reference_date(self, customer_orders_df):
+        result = calculate_rfm_segments(
+            customer_orders_df, reference_date="2024-06-01",
+        )
+        assert not result.empty
+        assert (result["recency_days"] >= 0).all()

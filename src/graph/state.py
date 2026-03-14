@@ -57,6 +57,10 @@ class AgentState(TypedDict):
     feedback_metrics: Optional[dict]
     # {"opens": int, "clicks": int, "read_time_seconds": int}
 
+    # ── Orchestrator output ──────────────────────────────────────────────────
+    analysis_plan: Optional[list[str]]
+    # e.g. ["trends", "anomalies", "forecast", "decomposition", "rfm_segments"]
+
     # ── Metadata ──────────────────────────────────────────────────────────────
     # Use Annotated + operator.add so multiple agents can append errors
     errors: Annotated[list[str], operator.add]
