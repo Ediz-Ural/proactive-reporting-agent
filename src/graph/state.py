@@ -61,6 +61,9 @@ class AgentState(TypedDict):
     analysis_plan: Optional[list[str]]
     # e.g. ["trends", "anomalies", "forecast", "decomposition", "rfm_segments"]
 
+    # ── Writer config ───────────────────────────────────────────────────────
+    writer_strategy: Optional[str]  # "zero_shot" | "few_shot" | "cot"
+
     # ── Metadata ──────────────────────────────────────────────────────────────
     # Use Annotated + operator.add so multiple agents can append errors
     errors: Annotated[list[str], operator.add]

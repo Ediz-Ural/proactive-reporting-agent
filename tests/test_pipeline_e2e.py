@@ -1,7 +1,7 @@
 """
 End-to-end pipeline test.
 Seeds an in-memory DB, runs the full LangGraph pipeline,
-and verifies that data flows correctly through all Week 1+2 nodes.
+and verifies that data flows correctly through all Week 1+2+3 nodes.
 """
 
 from __future__ import annotations
@@ -170,6 +170,24 @@ class TestPipelineE2E:
         plan = state.get("analysis_plan")
         assert plan is not None
         assert "trends" in plan
+
+    def test_historical_context_set(self, e2e_engine):
+        state = self._run(e2e_engine)
+        hc = state.get("historical_context")
+        # May be empty string (no ChromaDB data) but should not be None
+        assert hc is not None
+        assert isinstance(hc, str)
+
+    def test_draft_report_populated(self, e2e_engine):
+        state = self._run(e2e_engine)
+        dr = state.get("draft_report")
+        assert dr is not None
+        assert isinstance(dr, str)
+        assert len(dr) > 0
+
+    def test_evaluator_iteration_incremented(self, e2e_engine):
+        state = self._run(e2e_engine)
+        assert state.get("evaluator_iteration", 0) >= 1
 
     def test_no_pipeline_errors(self, e2e_engine):
         state = self._run(e2e_engine)

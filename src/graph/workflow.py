@@ -1,22 +1,13 @@
 """
-LangGraph workflow definition (skeleton for Week 1).
+LangGraph workflow definition (Week 3).
 
-The graph wires together all 9 agents. In Week 1 only the data_collector
-and data_quality nodes have real implementations; the rest are stubs that
-pass state through unchanged.
+Active nodes: data_collector, data_quality, orchestrator, analyst, rag, writer
+Stub nodes: evaluator (Week 4), delivery (Week 4), feedback (Week 5)
 
-Full pipeline:
-    START
-      └─► data_collector
-            └─► data_quality ──► [invalid?] ──► END (error)
-                  └─► orchestrator (creates analysis plan from raw_data)
-                        └─► analyst
-                              └─► rag
-                                    └─► writer
-                                          └─► evaluator ──► [score low?] ──► writer
-                                                └─► delivery
-                                                      └─► feedback
-                                                            └─► END
+Pipeline:
+    START → data_collector → data_quality → [quality gate]
+              → orchestrator → analyst → rag → writer
+              → evaluator → [eval loop ≤3] → delivery → feedback → END
 """
 
 import uuid
@@ -104,6 +95,23 @@ def analyst_node(state: AgentState) -> dict:
     return agent.analyse(state)
 
 
+def rag_node(state: AgentState) -> dict:
+    """Run the RAG Agent to retrieve historical report context."""
+    from src.agents.rag_agent import RAGAgent
+
+    agent = RAGAgent()
+    return agent.retrieve(state)
+
+
+def writer_node(state: AgentState) -> dict:
+    """Run the Writer Agent to generate the executive summary report."""
+    from src.agents.writer import WriterAgent
+
+    strategy = state.get("writer_strategy") or "few_shot"
+    agent = WriterAgent(strategy=strategy)
+    return agent.write(state)
+
+
 # ── Graph construction ────────────────────────────────────────────────────────
 
 def build_graph() -> StateGraph:
@@ -115,8 +123,8 @@ def build_graph() -> StateGraph:
     graph.add_node("data_collector", data_collector_node)
     graph.add_node("data_quality", data_quality_node)
     graph.add_node("analyst", analyst_node)
-    graph.add_node("rag", _stub("rag"))
-    graph.add_node("writer", _stub("writer"))
+    graph.add_node("rag", rag_node)
+    graph.add_node("writer", writer_node)
     graph.add_node("evaluator", _stub("evaluator"))
     graph.add_node("delivery", _stub("delivery"))
     graph.add_node("feedback", _stub("feedback"))
@@ -181,6 +189,7 @@ def run_pipeline(
         "quality_report": None,
         "analysis_results": None,
         "analysis_plan": None,
+        "writer_strategy": None,
         "historical_context": None,
         "draft_report": None,
         "evaluation": None,
