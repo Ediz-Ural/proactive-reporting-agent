@@ -294,7 +294,7 @@ Geçmiş Rapor Bağlamı:
         summary = raw_data.get("weekly_summary", {})
         lines.append("### Özet Göstergeler")
         if summary:
-            lines.append(f"- Toplam gelir: {summary.get('total_sales', 'N/A')} TL")
+            lines.append(f"- Toplam gelir: {summary.get('total_revenue', summary.get('total_sales', 'N/A'))} TL")
             lines.append(f"- Sipariş sayısı: {summary.get('total_orders', 'N/A')}")
             lines.append(f"- Ortalama sipariş değeri: {summary.get('avg_order_value', 'N/A')} TL")
             lines.append(f"- Benzersiz müşteri: {summary.get('unique_customers', 'N/A')}")

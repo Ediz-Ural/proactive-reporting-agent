@@ -251,7 +251,7 @@ Değerlendirmeni JSON olarak yaz:"""
 
         # 1. Numerical accuracy — raporda weekly_summary rakamları var mı?
         summary = raw_data.get("weekly_summary", {})
-        total_revenue = str(summary.get("total_sales", ""))
+        total_revenue = str(summary.get("total_revenue", summary.get("total_sales", "")))
         if total_revenue and total_revenue in draft_report:
             scores["numerical_accuracy"] = 0.8
         elif total_revenue:

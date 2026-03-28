@@ -315,12 +315,19 @@ def main() -> None:
     else:
         csv_path = Path(args.csv)
         if not csv_path.exists():
-            logger.warning(
-                "CSV not found at '%s'. Falling back to synthetic data (--rows %d).",
-                csv_path, args.rows
-            )
-            df = generate_sample_data(args.rows)
-        else:
+            # Try the original spaced filename as fallback
+            alt_path = Path("data/raw/Sample - Superstore.csv")
+            if alt_path.exists():
+                csv_path = alt_path
+                logger.info("Using alternate CSV path: %s", csv_path)
+            else:
+                logger.warning(
+                    "CSV not found at '%s'. Falling back to synthetic data (--rows %d).",
+                    csv_path, args.rows,
+                )
+                df = generate_sample_data(args.rows)
+                csv_path = None
+        if csv_path is not None:
             df = load_csv(str(csv_path))
 
     seed_database(df)
