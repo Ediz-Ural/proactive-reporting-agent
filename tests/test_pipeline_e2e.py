@@ -1,7 +1,7 @@
 """
 End-to-end pipeline test.
 Seeds an in-memory DB, runs the full LangGraph pipeline,
-and verifies that data flows correctly through all Week 1+2+3 nodes.
+and verifies that data flows correctly through all 9 nodes (Week 4).
 """
 
 from __future__ import annotations
@@ -196,3 +196,58 @@ class TestPipelineE2E:
         critical_errors = [e for e in errors if "failed" in e.lower()]
         # Allow non-critical failures (e.g., decomposition with sparse data)
         assert len(critical_errors) == 0, f"Pipeline had critical errors: {critical_errors}"
+
+    # ── Week 4: Evaluator, Delivery, Feedback tests ──────────────────────────
+
+    def test_evaluation_populated(self, e2e_engine):
+        """Evaluator produces a valid evaluation dict."""
+        state = self._run(e2e_engine)
+        ev = state.get("evaluation")
+        assert ev is not None
+        assert isinstance(ev, dict)
+        assert "overall_score" in ev
+        assert "approved" in ev
+
+    def test_evaluation_approved(self, e2e_engine):
+        """Report is approved (rule-based fallback on good data)."""
+        state = self._run(e2e_engine)
+        ev = state["evaluation"]
+        assert ev["approved"] is True
+
+    def test_delivery_status_populated(self, e2e_engine):
+        """Delivery produces a delivery_status dict."""
+        state = self._run(e2e_engine)
+        ds = state.get("delivery_status")
+        assert ds is not None
+        assert isinstance(ds, dict)
+
+    def test_final_report_set(self, e2e_engine):
+        """Final report is set after delivery."""
+        state = self._run(e2e_engine)
+        fr = state.get("final_report")
+        assert fr is not None
+        assert isinstance(fr, str)
+        assert len(fr) > 0
+
+    def test_feedback_metrics_populated(self, e2e_engine):
+        """Feedback collects pipeline metrics."""
+        state = self._run(e2e_engine)
+        fm = state.get("feedback_metrics")
+        assert fm is not None
+        assert isinstance(fm, dict)
+        assert "quality_score" in fm
+        assert "evaluator_iterations" in fm
+        assert "run_id" in fm
+
+    def test_all_agents_ran(self, e2e_engine):
+        """Verify the pipeline touched all 9 agents by checking their outputs."""
+        state = self._run(e2e_engine)
+        assert state.get("raw_data") is not None           # data_collector
+        assert state.get("quality_report") is not None      # data_quality
+        assert state.get("analysis_plan") is not None       # orchestrator
+        assert state.get("analysis_results") is not None    # analyst
+        assert state.get("historical_context") is not None  # rag
+        assert state.get("draft_report") is not None        # writer
+        assert state.get("evaluation") is not None          # evaluator
+        assert state.get("delivery_status") is not None     # delivery
+        assert state.get("feedback_metrics") is not None    # feedback

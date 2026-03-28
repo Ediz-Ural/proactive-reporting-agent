@@ -214,6 +214,31 @@ CREATE TABLE IF NOT EXISTS orders (
 )
 """
 
+def _get_index_statements(db_type: str) -> list[str]:
+    """Return CREATE INDEX statements compatible with the target DB engine."""
+    indexes = [
+        ("idx_order_date", "orders", "order_date"),
+        ("idx_category", "orders", "category"),
+        ("idx_customer", "orders", "customer_id"),
+        ("idx_region", "orders", "region"),
+        ("idx_segment", "orders", "segment"),
+    ]
+    if db_type == "mysql":
+        # MySQL: CREATE INDEX ... ON ... — drop first if exists
+        stmts = []
+        for name, table, col in indexes:
+            stmts.append(
+                f"CREATE INDEX {name} ON {table}({col})"
+            )
+        return stmts
+    # SQLite supports IF NOT EXISTS
+    return [
+        f"CREATE INDEX IF NOT EXISTS {name} ON {table}({col})"
+        for name, table, col in indexes
+    ]
+
+
+# Keep legacy INDEXES for backward compat (used in tests that import it)
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_order_date   ON orders(order_date)",
     "CREATE INDEX IF NOT EXISTS idx_category      ON orders(category)",
@@ -256,8 +281,12 @@ def seed_database(df: pd.DataFrame) -> None:
     engine = get_db_engine()
     with engine.connect() as conn:
         conn.execute(text(DDL))
-        for idx_sql in INDEXES:
-            conn.execute(text(idx_sql))
+        index_stmts = _get_index_statements(settings.DB_TYPE)
+        for idx_sql in index_stmts:
+            try:
+                conn.execute(text(idx_sql))
+            except Exception:
+                pass  # Index may already exist (MySQL)
         conn.commit()
 
     df.to_sql("orders", engine, if_exists="replace", index=False, chunksize=500)

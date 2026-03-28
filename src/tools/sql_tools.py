@@ -44,6 +44,34 @@ def get_db_engine() -> Engine:
     return engine
 
 
+# ── Connection test ───────────────────────────────────────────────────────────
+
+def test_db_connection() -> dict:
+    """
+    Test the database connection and return status info.
+
+    Returns:
+        Dict with keys: connected (bool), db_type, message, and error (if any).
+    """
+    try:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_type = settings.DB_TYPE
+        return {
+            "connected": True,
+            "db_type": db_type,
+            "message": f"Successfully connected to {db_type} database",
+        }
+    except Exception as exc:
+        return {
+            "connected": False,
+            "db_type": settings.DB_TYPE,
+            "message": "Connection failed",
+            "error": str(exc),
+        }
+
+
 # ── Generic executor ──────────────────────────────────────────────────────────
 
 def execute_query(query: str, params: dict | None = None) -> pd.DataFrame:

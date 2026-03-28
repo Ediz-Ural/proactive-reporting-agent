@@ -45,6 +45,9 @@ dependencies = [
     "apscheduler>=3.10",
     "pydantic-settings>=2.5",
     "python-dotenv>=1.0",
+
+    # Messaging
+    "twilio>=9.0",
 ]
 
 [project.optional-dependencies]

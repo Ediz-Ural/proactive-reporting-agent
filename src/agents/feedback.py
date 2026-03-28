@@ -1,14 +1,119 @@
-"""Feedback Agent — stub for Week 1. Full implementation in Week 5."""
+"""
+Feedback Agent — Week 5 implementation.
+
+Records pipeline execution metrics and stores generated reports in RAG
+for future reference.
+"""
+
 from __future__ import annotations
+
+import json
 import logging
+from datetime import datetime
+from pathlib import Path
+
 from src.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+METRICS_FILE = Path("data/metrics/pipeline_runs.jsonl")
+
 
 class FeedbackAgent:
-    """Collects open/click metrics and personalises future reports (Week 5 implementation)."""
+    """
+    Records pipeline execution metrics and feeds generated reports into RAG.
 
-    def collect(self, state: AgentState) -> AgentState:
-        logger.info("FeedbackAgent: stub — no feedback collected")
-        return {**state, "current_agent": "feedback", "feedback_metrics": {}}
+    Week 4: Execution metrics (duration, quality scores, error counts)
+    Week 5: Auto-store reports in ChromaDB for future RAG retrieval
+    """
+
+    def collect(self, state: AgentState) -> dict:
+        """
+        Record pipeline metrics and store the report in RAG.
+
+        Reads from state: evaluation, delivery_status, run_id, errors,
+                         analysis_results, report_type, start_date, end_date,
+                         evaluator_iteration, historical_context, final_report
+        Writes to state: feedback_metrics, current_agent
+        """
+        logger.info("FeedbackAgent: collecting pipeline metrics")
+
+        evaluation = state.get("evaluation") or {}
+        delivery_status = state.get("delivery_status") or {}
+        analysis_results = state.get("analysis_results") or {}
+        analysis_metadata = analysis_results.get("analysis_metadata", {})
+
+        metrics = {
+            "run_id": state.get("run_id", ""),
+            "timestamp": datetime.utcnow().isoformat(),
+            "report_type": state.get("report_type", ""),
+            "period": f"{state.get('start_date', '')} to {state.get('end_date', '')}",
+            "quality_score": evaluation.get("overall_score", 0),
+            "evaluator_iterations": state.get("evaluator_iteration", 0),
+            "approved_on_first_try": state.get("evaluator_iteration", 0) <= 1,
+            "delivery_sent": delivery_status.get("sent", False),
+            "error_count": len(state.get("errors", [])),
+            "analyses_completed": analysis_metadata.get("analyses_completed", []),
+            "analyses_failed": analysis_metadata.get("analyses_failed", []),
+            "had_historical_context": bool(state.get("historical_context")),
+        }
+
+        # Save metrics to JSONL file
+        self._save_metrics(metrics)
+
+        # Store generated report in RAG for future retrieval
+        final_report = state.get("final_report") or ""
+        if final_report and evaluation.get("approved", False):
+            self._store_report_in_rag(state)
+
+        logger.info(
+            "FeedbackAgent: metrics recorded (score=%.2f, iterations=%d, errors=%d)",
+            metrics["quality_score"],
+            metrics["evaluator_iterations"],
+            metrics["error_count"],
+        )
+
+        return {"feedback_metrics": metrics, "current_agent": "feedback"}
+
+    @staticmethod
+    def _save_metrics(metrics: dict) -> None:
+        """Append metrics to a JSONL file for later analysis."""
+        METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+        with open(METRICS_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(metrics, default=str, ensure_ascii=False) + "\n")
+
+        logger.debug("Metrics saved to %s", METRICS_FILE)
+
+    @staticmethod
+    def _store_report_in_rag(state: AgentState) -> None:
+        """Store the approved report in ChromaDB for future RAG retrieval."""
+        try:
+            from src.tools.rag_tools import ReportVectorStore
+
+            report_content = state.get("final_report") or ""
+            if not report_content:
+                return
+
+            run_id = state.get("run_id", "unknown")
+            report_id = f"generated_{run_id}"
+            metadata = {
+                "report_type": state.get("report_type", ""),
+                "start_date": state.get("start_date", ""),
+                "end_date": state.get("end_date", ""),
+                "generated_at": datetime.utcnow().isoformat(),
+                "source": "pipeline",
+            }
+
+            store = ReportVectorStore()
+            chunks = store.store_report(
+                report_id=report_id,
+                content=report_content,
+                metadata=metadata,
+            )
+            logger.info(
+                "FeedbackAgent: stored report in RAG (%d chunks, id=%s)",
+                chunks, report_id,
+            )
+        except Exception as exc:
+            logger.warning("FeedbackAgent: failed to store report in RAG: %s", exc)

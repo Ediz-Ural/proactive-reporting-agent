@@ -1,14 +1,16 @@
 """
 Tests for the Orchestrator Agent.
 
-Validates that the rule-based analysis plan logic works correctly
+Validates that the rule-based and LLM-based analysis plan logic works correctly
 based on the amount and type of available data.
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -114,3 +116,96 @@ class TestOrchestratorPlan:
         state = {"start_date": "2024-01-01", "end_date": "2024-01-31"}
         result = self.agent.plan(state)
         assert "analysis_plan" in result
+
+
+# ── LLM Orchestrator Tests ───────────────────────────────────────────────────
+
+class TestOrchestratorLLM:
+    """Tests for LLM-based orchestrator planning."""
+
+    def test_llm_mode_uses_llm_plan(self):
+        """use_llm=True calls LLM and uses its plan."""
+        llm_response = json.dumps([
+            "trends", "anomalies", "period_comparison",
+            "category_performance", "forecast",
+        ])
+        agent = OrchestratorAgent(use_llm=True)
+
+        with patch("src.tools.llm_tools.call_llm_with_retry", return_value=llm_response):
+            result = agent.plan(_make_state(20))
+
+        plan = result["analysis_plan"]
+        assert "forecast" in plan
+        assert "trends" in plan
+
+    def test_llm_mode_fallback_on_failure(self):
+        """use_llm=True but LLM fails → falls back to rule-based."""
+        agent = OrchestratorAgent(use_llm=True)
+
+        with patch("src.tools.llm_tools.call_llm_with_retry", return_value=None):
+            result = agent.plan(_make_state(20))
+
+        plan = result["analysis_plan"]
+        assert "trends" in plan
+        assert "forecast" in plan  # 20 days → included by rules
+
+    def test_llm_mode_invalid_json_fallback(self):
+        """LLM returns non-JSON → falls back to rule-based."""
+        agent = OrchestratorAgent(use_llm=True)
+
+        with patch("src.tools.llm_tools.call_llm_with_retry", return_value="Not valid JSON"):
+            result = agent.plan(_make_state(20))
+
+        assert "analysis_plan" in result
+        assert "trends" in result["analysis_plan"]
+
+    def test_llm_plan_ensures_core_analyses(self):
+        """LLM plan always includes core analyses even if LLM omits them."""
+        # LLM returns only forecast
+        llm_response = json.dumps(["forecast"])
+        agent = OrchestratorAgent(use_llm=True)
+
+        with patch("src.tools.llm_tools.call_llm_with_retry", return_value=llm_response):
+            result = agent.plan(_make_state(20))
+
+        plan = result["analysis_plan"]
+        for core in ["trends", "anomalies", "period_comparison", "category_performance"]:
+            assert core in plan
+
+    def test_llm_plan_filters_invalid_analyses(self):
+        """LLM returns unknown analysis names → filtered out."""
+        llm_response = json.dumps(["trends", "anomalies", "magic_analysis", "forecast"])
+        agent = OrchestratorAgent(use_llm=True)
+
+        with patch("src.tools.llm_tools.call_llm_with_retry", return_value=llm_response):
+            result = agent.plan(_make_state(20))
+
+        plan = result["analysis_plan"]
+        assert "magic_analysis" not in plan
+
+    def test_llm_plan_with_markdown_fences(self):
+        """LLM wraps JSON in ```json ... ``` → still parses."""
+        inner = json.dumps(["trends", "anomalies", "period_comparison", "category_performance"])
+        llm_response = f"```json\n{inner}\n```"
+        agent = OrchestratorAgent(use_llm=True)
+
+        with patch("src.tools.llm_tools.call_llm_with_retry", return_value=llm_response):
+            result = agent.plan(_make_state(20))
+
+        assert "trends" in result["analysis_plan"]
+
+    def test_default_use_llm_is_false(self):
+        """Default OrchestratorAgent uses rule-based (use_llm=False)."""
+        agent = OrchestratorAgent()
+        assert agent.use_llm is False
+
+    def test_llm_not_a_list_falls_back(self):
+        """LLM returns a dict instead of list → falls back."""
+        llm_response = json.dumps({"analyses": ["trends"]})
+        agent = OrchestratorAgent(use_llm=True)
+
+        with patch("src.tools.llm_tools.call_llm_with_retry", return_value=llm_response):
+            result = agent.plan(_make_state(20))
+
+        # Should fall back to rule-based
+        assert "trends" in result["analysis_plan"]

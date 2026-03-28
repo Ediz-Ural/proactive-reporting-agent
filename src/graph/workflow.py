@@ -1,8 +1,8 @@
 """
-LangGraph workflow definition (Week 3).
+LangGraph workflow definition (Week 5 — production-ready).
 
-Active nodes: data_collector, data_quality, orchestrator, analyst, rag, writer
-Stub nodes: evaluator (Week 4), delivery (Week 4), feedback (Week 5)
+All 9 nodes fully implemented. Monthly scheduler, retry mechanism,
+WhatsApp delivery, LLM orchestrator, and auto-RAG storage added.
 
 Pipeline:
     START → data_collector → data_quality → [quality gate]
@@ -18,19 +18,6 @@ from src.graph.state import AgentState
 from config.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-# ── Stub node helpers ─────────────────────────────────────────────────────────
-
-def _stub(name: str):
-    """Return a pass-through node function for not-yet-implemented agents."""
-
-    def node(state: AgentState) -> dict:
-        logger.debug("Stub node reached: %s", name)
-        return {"current_agent": name}
-
-    node.__name__ = name
-    return node
 
 
 # ── Routing functions ─────────────────────────────────────────────────────────
@@ -59,15 +46,7 @@ def route_after_evaluator(state: AgentState) -> str:
     return "writer"
 
 
-# ── Real node imports (lazy, to avoid circular imports) ───────────────────────
-
-def orchestrator_node(state: AgentState) -> dict:
-    """Run the Orchestrator Agent to create an analysis plan."""
-    from src.agents.orchestrator import OrchestratorAgent
-
-    agent = OrchestratorAgent()
-    return agent.plan(state)
-
+# ── Node functions (lazy imports to avoid circular imports) ───────────────────
 
 def data_collector_node(state: AgentState) -> dict:
     """Run the Data Collector Agent to fetch raw data."""
@@ -85,6 +64,15 @@ def data_quality_node(state: AgentState) -> dict:
     raw_data = state.get("raw_data") or {}
     report = agent.validate(raw_data)
     return {"quality_report": report, "current_agent": "data_quality"}
+
+
+def orchestrator_node(state: AgentState) -> dict:
+    """Run the Orchestrator Agent to create an analysis plan."""
+    from src.agents.orchestrator import OrchestratorAgent
+
+    use_llm = state.get("use_llm_orchestrator", False)
+    agent = OrchestratorAgent(use_llm=use_llm)
+    return agent.plan(state)
 
 
 def analyst_node(state: AgentState) -> dict:
@@ -112,22 +100,46 @@ def writer_node(state: AgentState) -> dict:
     return agent.write(state)
 
 
+def evaluator_node(state: AgentState) -> dict:
+    """Run the Evaluator Agent to score the draft report."""
+    from src.agents.evaluator import EvaluatorAgent
+
+    agent = EvaluatorAgent()
+    return agent.evaluate(state)
+
+
+def delivery_node(state: AgentState) -> dict:
+    """Run the Delivery Agent to send or save the final report."""
+    from src.agents.delivery import DeliveryAgent
+
+    agent = DeliveryAgent()
+    return agent.deliver(state)
+
+
+def feedback_node(state: AgentState) -> dict:
+    """Run the Feedback Agent to record pipeline metrics."""
+    from src.agents.feedback import FeedbackAgent
+
+    agent = FeedbackAgent()
+    return agent.collect(state)
+
+
 # ── Graph construction ────────────────────────────────────────────────────────
 
 def build_graph() -> StateGraph:
     """Assemble and compile the full LangGraph DAG."""
     graph = StateGraph(AgentState)
 
-    # Register nodes
-    graph.add_node("orchestrator", orchestrator_node)
+    # Register nodes — all 9 are real implementations
     graph.add_node("data_collector", data_collector_node)
     graph.add_node("data_quality", data_quality_node)
+    graph.add_node("orchestrator", orchestrator_node)
     graph.add_node("analyst", analyst_node)
     graph.add_node("rag", rag_node)
     graph.add_node("writer", writer_node)
-    graph.add_node("evaluator", _stub("evaluator"))
-    graph.add_node("delivery", _stub("delivery"))
-    graph.add_node("feedback", _stub("feedback"))
+    graph.add_node("evaluator", evaluator_node)
+    graph.add_node("delivery", delivery_node)
+    graph.add_node("feedback", feedback_node)
 
     # Linear edges
     graph.add_edge(START, "data_collector")
@@ -212,3 +224,59 @@ def run_pipeline(
     final_state = graph.invoke(initial_state)
     logger.info("Pipeline completed | run_id=%s", initial_state["run_id"])
     return final_state
+
+
+# ── Retry wrapper ────────────────────────────────────────────────────────────
+
+def run_pipeline_with_retry(
+    start_date: str,
+    end_date: str,
+    report_type: str = "weekly",
+    recipients: list[str] | None = None,
+    max_retries: int = 2,
+) -> AgentState:
+    """
+    Execute the pipeline with exponential backoff retry.
+
+    Args:
+        start_date: ISO date string.
+        end_date:   ISO date string.
+        report_type: Report type.
+        recipients: Email addresses.
+        max_retries: Number of retries after first failure.
+
+    Returns:
+        Final AgentState.
+
+    Raises:
+        RuntimeError: If all attempts fail.
+    """
+    import time
+
+    last_exc: Exception | None = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            state = run_pipeline(
+                start_date=start_date,
+                end_date=end_date,
+                report_type=report_type,
+                recipients=recipients,
+            )
+            return state
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                wait = 2 ** attempt  # 1s, 2s, 4s ...
+                logger.warning(
+                    "Pipeline attempt %d/%d failed: %s — retrying in %ds",
+                    attempt + 1, max_retries + 1, exc, wait,
+                )
+                time.sleep(wait)
+            else:
+                logger.error(
+                    "Pipeline failed after %d attempts: %s",
+                    max_retries + 1, exc,
+                )
+
+    raise RuntimeError(f"Pipeline failed after {max_retries + 1} attempts: {last_exc}")

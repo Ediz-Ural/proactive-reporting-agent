@@ -32,6 +32,8 @@ data/raw/*.xlsx
 data/processed/
 data/reporting_agent.db
 data/chroma/
+data/reports/
+data/metrics/
 
 # Logs
 logs/

@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: str = Field(default="")
     REPORT_RECIPIENTS: str = Field(default="", description="Comma-separated email list")
 
+    # ── WhatsApp / Twilio ──────────────────────────────────────────────────────
+    TWILIO_ACCOUNT_SID: str = Field(default="")
+    TWILIO_AUTH_TOKEN: str = Field(default="")
+    WHATSAPP_FROM: str = Field(default="", description="Twilio WhatsApp sender, e.g. whatsapp:+14155238886")
+    WHATSAPP_RECIPIENTS: str = Field(default="", description="Comma-separated whatsapp:+... numbers")
+
+    # ── Scheduler ────────────────────────────────────────────────────────────
+    SCHEDULER_ENABLED: bool = Field(default=False, description="Enable monthly APScheduler")
+    SCHEDULER_HOUR: int = Field(default=8, description="Hour to run monthly job (0-23)")
+    SCHEDULER_MINUTE: int = Field(default=0, description="Minute to run monthly job (0-59)")
+
     # ── LangSmith observability ───────────────────────────────────────────────
     LANGCHAIN_TRACING_V2: bool = Field(default=False)
     LANGCHAIN_API_KEY: str = Field(default="")
@@ -61,6 +72,13 @@ class Settings(BaseSettings):
         if not self.REPORT_RECIPIENTS:
             return []
         return [r.strip() for r in self.REPORT_RECIPIENTS.split(",") if r.strip()]
+
+    @property
+    def whatsapp_recipients_list(self) -> list[str]:
+        """Parse comma-separated WhatsApp recipients into a list."""
+        if not self.WHATSAPP_RECIPIENTS:
+            return []
+        return [r.strip() for r in self.WHATSAPP_RECIPIENTS.split(",") if r.strip()]
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
