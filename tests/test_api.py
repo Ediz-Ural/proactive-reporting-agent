@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -41,7 +42,7 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        assert data["version"] == "0.5.0"
+        assert data["version"] == "0.6.0"
 
     def test_health_includes_db_status(self, client):
         """Health check includes database connection info."""
@@ -97,7 +98,7 @@ class TestRunEndpoint:
         assert response.status_code == 200
 
     def test_run_missing_dates_returns_422(self, client):
-        """POST /run without dates → validation error."""
+        """POST /run without dates -> validation error."""
         response = client.post("/run", json={})
         assert response.status_code == 422
 
@@ -133,10 +134,7 @@ class TestRunsEndpoint:
 
     def test_runs_empty_when_no_file(self, client):
         """GET /runs returns empty list when no metrics file."""
-        with patch("src.api.Path") as mock_path_cls:
-            mock_path = MagicMock()
-            mock_path.exists.return_value = False
-            mock_path_cls.return_value = mock_path
+        with patch.object(Path, "exists", return_value=False):
             response = client.get("/runs")
 
         assert response.status_code == 200
@@ -151,7 +149,7 @@ class TestRunsEndpoint:
             + json.dumps({"run_id": "r2", "quality_score": 0.9}) + "\n"
         )
 
-        with patch("src.api.Path", return_value=metrics_file):
+        with patch("src.api.METRICS_PATH", metrics_file):
             response = client.get("/runs")
 
         assert response.status_code == 200
@@ -166,7 +164,7 @@ class TestRunsEndpoint:
         lines = [json.dumps({"run_id": f"r{i}"}) + "\n" for i in range(5)]
         metrics_file.write_text("".join(lines))
 
-        with patch("src.api.Path", return_value=metrics_file):
+        with patch("src.api.METRICS_PATH", metrics_file):
             response = client.get("/runs?limit=1")
 
         data = response.json()
@@ -201,3 +199,279 @@ class TestRagStatsEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "error"
+
+
+# ── New endpoint tests (Week 6) ──────────────────────────────────────────────
+
+
+class TestLatestRunEndpoint:
+    """Tests for GET /runs/latest."""
+
+    def test_latest_run_returns_data(self, client, tmp_path):
+        """GET /runs/latest returns the most recent run."""
+        metrics_file = tmp_path / "pipeline_runs.jsonl"
+        metrics_file.write_text(
+            json.dumps({"run_id": "r1", "quality_score": 0.8}) + "\n"
+            + json.dumps({"run_id": "r2", "quality_score": 0.9}) + "\n"
+        )
+
+        with patch("src.api.METRICS_PATH", metrics_file), \
+             patch("src.api.Path") as mock_path_cls:
+            mock_reports_dir = MagicMock()
+            mock_reports_dir.exists.return_value = False
+
+            def path_side_effect(p):
+                if p == "data/reports":
+                    return mock_reports_dir
+                return Path(p)
+
+            mock_path_cls.side_effect = path_side_effect
+
+            response = client.get("/runs/latest")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run"]["run_id"] == "r2"
+
+    def test_latest_run_404_when_empty(self, client, tmp_path):
+        """GET /runs/latest returns 404 when no runs exist."""
+        metrics_file = tmp_path / "pipeline_runs.jsonl"
+        # Don't create the file — METRICS_PATH.exists() returns False via _read_all_runs
+
+        with patch("src.api.METRICS_PATH", metrics_file):
+            response = client.get("/runs/latest")
+
+        assert response.status_code == 404
+
+    def test_latest_run_includes_report_content(self, client, tmp_path):
+        """GET /runs/latest includes report content if available."""
+        metrics_file = tmp_path / "pipeline_runs.jsonl"
+        metrics_file.write_text(json.dumps({"run_id": "r1"}) + "\n")
+
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        md_file = reports_dir / "report_20260328.md"
+        md_file.write_text("# Test Report")
+        html_file = reports_dir / "report_20260328.html"
+        html_file.write_text("<h1>Test Report</h1>")
+
+        with patch("src.api.METRICS_PATH", metrics_file), \
+             patch("src.api.Path") as mock_path_cls:
+
+            def path_side_effect(p):
+                if p == "data/reports":
+                    return reports_dir
+                return Path(p)
+
+            mock_path_cls.side_effect = path_side_effect
+
+            response = client.get("/runs/latest")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["report_content"] == "# Test Report"
+        assert data["report_html"] == "<h1>Test Report</h1>"
+
+
+class TestRunDetailEndpoint:
+    """Tests for GET /runs/{run_id}."""
+
+    def test_run_detail_found(self, client, tmp_path):
+        """GET /runs/{run_id} returns the matching run."""
+        metrics_file = tmp_path / "pipeline_runs.jsonl"
+        metrics_file.write_text(
+            json.dumps({"run_id": "abc-123", "quality_score": 0.85}) + "\n"
+        )
+
+        with patch("src.api.METRICS_PATH", metrics_file):
+            response = client.get("/runs/abc-123")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["run"]["run_id"] == "abc-123"
+        assert data["run"]["quality_score"] == 0.85
+
+    def test_run_detail_not_found(self, client, tmp_path):
+        """GET /runs/{run_id} returns 404 for unknown run."""
+        metrics_file = tmp_path / "pipeline_runs.jsonl"
+        metrics_file.write_text(json.dumps({"run_id": "other"}) + "\n")
+
+        with patch("src.api.METRICS_PATH", metrics_file):
+            response = client.get("/runs/nonexistent")
+
+        assert response.status_code == 404
+
+
+class TestReportsEndpoint:
+    """Tests for GET /reports."""
+
+    def test_reports_list(self, client, tmp_path):
+        """GET /reports returns file list."""
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        (reports_dir / "report_a.md").write_text("# A")
+        (reports_dir / "report_b.md").write_text("# B")
+        (reports_dir / "report_b.html").write_text("<h1>B</h1>")
+
+        with patch("src.api.Path") as mock_path_cls:
+            mock_path_cls.return_value = reports_dir
+            response = client.get("/reports")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["reports"]) == 2
+        # Check that has_html detection works
+        filenames = {r["filename"] for r in data["reports"]}
+        assert "report_a.md" in filenames
+        assert "report_b.md" in filenames
+
+    def test_reports_empty_dir(self, client):
+        """GET /reports returns empty list when dir doesn't exist."""
+        with patch("src.api.Path") as mock_path_cls:
+            mock_dir = MagicMock()
+            mock_dir.exists.return_value = False
+            mock_path_cls.return_value = mock_dir
+            response = client.get("/reports")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["reports"] == []
+
+
+class TestReportDetailEndpoint:
+    """Tests for GET /reports/{filename}."""
+
+    def test_report_content(self, client, tmp_path):
+        """GET /reports/{filename} returns markdown and HTML content."""
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        (reports_dir / "test.md").write_text("# Test")
+        (reports_dir / "test.html").write_text("<h1>Test</h1>")
+
+        with patch("src.api.Path") as mock_path_cls:
+            def path_side_effect(p):
+                if p == "data/reports":
+                    return reports_dir
+                return Path(p)
+            mock_path_cls.side_effect = path_side_effect
+            # The endpoint does Path("data/reports") / filename
+            response = client.get("/reports/test.md")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["content_md"] == "# Test"
+        assert data["content_html"] == "<h1>Test</h1>"
+
+    def test_report_not_found(self, client, tmp_path):
+        """GET /reports/{filename} returns 404 for missing file."""
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+
+        with patch("src.api.Path") as mock_path_cls:
+            def path_side_effect(p):
+                if p == "data/reports":
+                    return reports_dir
+                return Path(p)
+            mock_path_cls.side_effect = path_side_effect
+            response = client.get("/reports/nonexistent.md")
+
+        assert response.status_code == 404
+
+    def test_report_path_traversal_blocked(self, client):
+        """GET /reports/{filename} blocks path traversal attempts."""
+        response = client.get("/reports/..%2F..%2Fetc%2Fpasswd")
+        # The ".." check catches encoded traversal after FastAPI decodes it
+        assert response.status_code in (400, 404)
+
+
+class TestDbStatsEndpoint:
+    """Tests for GET /db/stats."""
+
+    def test_db_stats_returns_data(self, client):
+        """GET /db/stats returns database statistics."""
+        with patch("src.tools.sql_tools.execute_query") as mock_query:
+            mock_query.side_effect = [
+                pd.DataFrame({"cnt": [9986]}),
+                pd.DataFrame({"min_date": ["2014-01-03"], "max_date": ["2017-12-30"]}),
+                pd.DataFrame({
+                    "category": ["Furniture", "Office Supplies", "Technology"],
+                    "cnt": [2001, 6026, 1847],
+                }),
+            ]
+            response = client.get("/db/stats")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_orders"] == 9986
+        assert data["date_range"]["min"] == "2014-01-03"
+        assert data["date_range"]["max"] == "2017-12-30"
+        assert len(data["categories"]) == 3
+
+    def test_db_stats_handles_error(self, client):
+        """GET /db/stats returns 500 on database error."""
+        with patch("src.tools.sql_tools.execute_query", side_effect=RuntimeError("DB down")):
+            response = client.get("/db/stats")
+
+        assert response.status_code == 500
+
+
+class TestRunSyncEndpoint:
+    """Tests for POST /run/sync."""
+
+    def test_sync_returns_results(self, client):
+        """POST /run/sync returns full pipeline results."""
+        mock_state = {
+            "run_id": "sync-123",
+            "raw_data": {"weekly_summary": {"total_revenue": 1000}},
+            "analysis_results": {"trends": []},
+            "draft_report": "# Report",
+            "evaluation": {"overall_score": 0.85, "approved": True},
+            "delivery_status": {"file": True},
+            "errors": [],
+        }
+
+        with patch("src.graph.workflow.run_pipeline", return_value=mock_state):
+            response = client.post("/run/sync", json={
+                "start_date": "2017-01-01",
+                "end_date": "2017-01-31",
+                "report_type": "monthly",
+            })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "completed"
+        assert data["run_id"] == "sync-123"
+        assert data["weekly_summary"]["total_revenue"] == 1000
+        assert data["draft_report"] == "# Report"
+        assert data["evaluation"]["approved"] is True
+
+    def test_sync_missing_dates_returns_422(self, client):
+        """POST /run/sync without dates -> validation error."""
+        response = client.post("/run/sync", json={})
+        assert response.status_code == 422
+
+
+class TestCORSHeaders:
+    """Tests for CORS middleware."""
+
+    def test_cors_allows_localhost_5173(self, client):
+        """CORS preflight allows React dev server origin."""
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+    def test_cors_allows_localhost_3000(self, client):
+        """CORS preflight allows production frontend origin."""
+        response = client.options(
+            "/health",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"

@@ -47,6 +47,15 @@ services:
         condition: service_healthy
     command: uvicorn src.api:app --host 0.0.0.0 --port 8000 --reload
 
+  frontend:
+    build: ./frontend
+    container_name: reporting_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+
 volumes:
   mysql_data:
   app_data:
