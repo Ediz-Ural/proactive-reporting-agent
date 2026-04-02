@@ -47,24 +47,24 @@ class ReportVectorStore:
         report_id: str,
         content: str,
         metadata: dict[str, Any] | None = None,
-        chunk_size: int = 500,
+        chunk_size: int = 1000,
         chunk_overlap: int = 100,
     ) -> int:
         """
         Split report into chunks and store in ChromaDB.
 
         Args:
-            report_id: Unique report ID (e.g. "report_2024_w01").
+            report_id: Unique report ID (e.g. "report_2016_dec").
             content: Full report text.
             metadata: Extra metadata (date, period, type).
-            chunk_size: Chunk size in characters.
-            chunk_overlap: Overlap between chunks.
+            chunk_size: Max chunk size in characters.
+            chunk_overlap: Unused (kept for API compat). Chunking is section-based.
 
         Returns:
             Number of chunks stored.
         """
         metadata = metadata or {}
-        chunks = self._split_text(content, chunk_size, chunk_overlap)
+        chunks = self._split_by_sections(content, max_chunk_size=chunk_size)
 
         if not chunks:
             logger.warning("No chunks produced for report %s", report_id)
@@ -161,7 +161,97 @@ class ReportVectorStore:
             "report_ids": sorted(report_ids),
         }
 
+    # ── Clear ──────────────────────────────────────────────────────────────
+
+    def clear_collection(self) -> None:
+        """Delete all documents. Used before re-seeding."""
+        ids = self._collection.get()["ids"]
+        if ids:
+            self._collection.delete(ids=ids)
+        logger.info("Collection cleared — %d documents removed", len(ids))
+
     # ── Helpers ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _split_by_sections(text: str, max_chunk_size: int = 1000) -> list[str]:
+        """Split report text by markdown sections for meaningful chunks.
+
+        Strategy:
+        1. Split on ## / ### headings (each section = one chunk).
+        2. If a section exceeds *max_chunk_size*, flush before the overflow line
+           and start a new chunk (preserving the section title for context).
+        3. Skip chunks shorter than 30 chars (noise).
+        """
+        if not text or not text.strip():
+            return []
+
+        chunks: list[str] = []
+        lines = text.split("\n")
+
+        current_section_title = ""
+        current_chunk_lines: list[str] = []
+
+        for line in lines:
+            # New section heading?
+            if line.startswith("### ") or line.startswith("## "):
+                # Flush current chunk
+                if current_chunk_lines:
+                    chunk_text = "\n".join(current_chunk_lines).strip()
+                    if chunk_text and len(chunk_text) > 30:
+                        chunks.append(chunk_text)
+
+                current_section_title = line
+                current_chunk_lines = [line]
+            else:
+                # Check if adding this line would exceed the limit
+                candidate = current_chunk_lines + [line]
+                candidate_text = "\n".join(candidate)
+                if len(candidate_text) > max_chunk_size and current_chunk_lines:
+                    # Flush what we have WITHOUT this line
+                    chunk_text = "\n".join(current_chunk_lines).strip()
+                    if chunk_text and len(chunk_text) > 30:
+                        chunks.append(chunk_text)
+                    # Start a new chunk: section title + this line
+                    if current_section_title:
+                        current_chunk_lines = [current_section_title, line]
+                    else:
+                        current_chunk_lines = [line]
+                else:
+                    current_chunk_lines.append(line)
+
+        # Flush last chunk
+        if current_chunk_lines:
+            chunk_text = "\n".join(current_chunk_lines).strip()
+            if chunk_text and len(chunk_text) > 30:
+                chunks.append(chunk_text)
+
+        # Fallback: if no headings were found, split by paragraphs
+        if not chunks:
+            chunks = ReportVectorStore._split_by_paragraphs(text, max_chunk_size)
+
+        return chunks
+
+    @staticmethod
+    def _split_by_paragraphs(text: str, max_chunk_size: int = 1000) -> list[str]:
+        """Fallback: split on blank lines (paragraph boundaries)."""
+        paragraphs = text.split("\n\n")
+        chunks: list[str] = []
+        current = ""
+
+        for para in paragraphs:
+            para = para.strip()
+            if not para:
+                continue
+            if len(current) + len(para) + 2 > max_chunk_size and current:
+                chunks.append(current.strip())
+                current = para
+            else:
+                current = current + "\n\n" + para if current else para
+
+        if current.strip():
+            chunks.append(current.strip())
+
+        return chunks
 
     @staticmethod
     def _split_text(
@@ -169,7 +259,7 @@ class ReportVectorStore:
         chunk_size: int = 500,
         chunk_overlap: int = 100,
     ) -> list[str]:
-        """Split text into overlapping chunks."""
+        """Legacy character-based splitting. Kept for backwards compatibility."""
         if not text:
             return []
 

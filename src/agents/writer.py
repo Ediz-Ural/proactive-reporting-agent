@@ -48,6 +48,13 @@ RAPOR FORMATI:
 2. Her öneri bir bulguya dayalı olmalı
 3. Öncelik sırası belirtilmeli
 
+GEÇMİŞ RAPOR BAĞLAMI KULLANIMI:
+- Geçmiş raporlarda benzer dönem veya benzer anomali varsa, bunu açıkça referans ver
+- "Geçen ay da benzer bir düşüş yaşanmıştı" gibi karşılaştırma yap
+- Geçmiş raporlardaki aksiyon önerilerinin sonuçlarını değerlendir
+- Eğer geçmiş bağlam boşsa veya ilgisizse, zorla referans verme — sadece mevcut veriyi kullan
+- Geçmiş bağlamı RAW olarak kopyalama, kendi cümlelerinle özetle
+
 KURALLAR:
 - Türkçe yaz
 - Rakamları kesin ver (yuvarlama yapma)
@@ -322,6 +329,9 @@ Geçmiş Rapor Bağlamı:
                     direction = data.get("direction", "unknown")
                     growth = data.get("growth_rate_pct", 0)
                     dir_label = {
+                        "up": "yükseliş",
+                        "down": "düşüş",
+                        "stable": "stabil",
                         "increasing": "yükseliş",
                         "decreasing": "düşüş",
                         "no trend": "stabil",

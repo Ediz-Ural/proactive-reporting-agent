@@ -46,12 +46,18 @@ class TestReportVectorStore:
         assert "rpt_001" in stats["report_ids"]
 
     def test_store_report_chunking(self, store):
-        long_content = "Test " * 500  # ~2500 chars → should produce multiple chunks
+        long_content = (
+            "## Bölüm Bir\n"
+            + "Satır bir içerik.\n" * 30
+            + "## Bölüm İki\n"
+            + "Satır iki içerik.\n" * 30
+            + "## Bölüm Üç\n"
+            + "Satır üç içerik.\n" * 30
+        )
         n = store.store_report(
             report_id="rpt_long",
             content=long_content,
             chunk_size=200,
-            chunk_overlap=50,
         )
         assert n > 1
 
@@ -107,7 +113,35 @@ class TestReportVectorStore:
         stats = store.get_collection_stats()
         assert stats["total_reports"] == 1
 
-    def test_split_text(self, store):
+    def test_clear_collection(self, store):
+        store.store_report("rpt_c1", "## Bölüm\nİçerik bir burada.", {"report_type": "monthly"})
+        store.store_report("rpt_c2", "## Bölüm\nİçerik iki burada.", {"report_type": "monthly"})
+        assert store.get_collection_stats()["total_chunks"] >= 2
+        store.clear_collection()
+        assert store.get_collection_stats()["total_chunks"] == 0
+
+    def test_split_by_sections(self, store):
+        text = "## Başlık\nİçerik satırı 1\nİçerik satırı 2\n### Alt Bölüm\nAlt içerik burada."
+        chunks = store._split_by_sections(text, max_chunk_size=2000)
+        assert len(chunks) >= 2
+        assert chunks[0].startswith("## Başlık")
+        assert chunks[1].startswith("### Alt Bölüm")
+
+    def test_split_by_sections_empty(self, store):
+        assert store._split_by_sections("") == []
+        assert store._split_by_sections("   ") == []
+
+    def test_split_by_sections_no_headings_falls_back(self, store):
+        text = "Paragraf bir.\n\nParagraf iki.\n\nParagraf üç."
+        chunks = store._split_by_sections(text, max_chunk_size=2000)
+        assert len(chunks) >= 1
+
+    def test_split_by_sections_long_section(self, store):
+        text = "## Uzun Bölüm\n" + ("Bu bir test cümlesidir.\n" * 50)
+        chunks = store._split_by_sections(text, max_chunk_size=200)
+        assert len(chunks) >= 2
+
+    def test_split_text_legacy(self, store):
         chunks = store._split_text("abcdefghij", chunk_size=5, chunk_overlap=2)
         assert len(chunks) >= 2
         assert chunks[0] == "abcde"
@@ -157,9 +191,9 @@ class TestRAGAgent:
             "quality_report": None,
             "analysis_results": {
                 "trends": {
-                    "total_sales": {"direction": "increasing", "growth_rate_pct": 5.0}
+                    "total_sales": {"direction": "up", "growth_rate_pct": 15.0}
                 },
-                "anomalies": [{"metric": "sales", "date": "2024-01-25"}],
+                "anomalies": [{"column": "total_sales", "date": "2024-01-25"}],
                 "category_performance": [{"category": "Technology", "total_sales": 20000}],
             },
             "analysis_plan": None,
@@ -229,13 +263,46 @@ class TestRAGAgent:
         agent = RAGAgent(persist_dir=populated_store_dir)
         queries = agent._build_queries(
             analysis_results={
-                "trends": {"total_sales": {"direction": "increasing"}},
-                "anomalies": [{"metric": "revenue"}],
-                "category_performance": [{"category": "Technology"}],
+                "trends": {"total_sales": {"direction": "up", "growth_rate_pct": 15.0}},
+                "anomalies": [{"column": "total_sales"}],
+                "category_performance": [
+                    {"category": "Technology", "profit_margin_pct": 10}
+                ],
             },
             start_date="2024-01-22",
             end_date="2024-01-28",
             report_type="weekly",
         )
-        assert len(queries) >= 2  # At least general + one more
-        assert any("Haftalık" in q for q in queries)
+        assert len(queries) >= 2  # At least general + anomaly/trend
+        assert any("satış raporu" in q for q in queries)
+
+    def test_build_queries_with_losses(self, populated_store_dir):
+        from src.agents.rag_agent import RAGAgent
+
+        agent = RAGAgent(persist_dir=populated_store_dir)
+        queries = agent._build_queries(
+            analysis_results={
+                "trends": {},
+                "anomalies": [],
+                "category_performance": [
+                    {"sub_category": "Tables", "profit_margin_pct": -5}
+                ],
+            },
+            start_date="2024-01-22",
+            end_date="2024-01-28",
+            report_type="weekly",
+        )
+        assert any("zarar" in q for q in queries)
+
+    def test_build_queries_minimal(self, populated_store_dir):
+        from src.agents.rag_agent import RAGAgent
+
+        agent = RAGAgent(persist_dir=populated_store_dir)
+        queries = agent._build_queries(
+            analysis_results={},
+            start_date="2024-01-22",
+            end_date="2024-01-28",
+            report_type="weekly",
+        )
+        assert len(queries) >= 1  # At least the general query
+        assert any("satış raporu" in q for q in queries)

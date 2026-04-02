@@ -3,10 +3,12 @@ Seed script — load sample reports into ChromaDB.
 
 Usage:
     python data/seed_reports.py
+    python data/seed_reports.py --clear   # clear existing data first
 """
 
 from __future__ import annotations
 
+import argparse
 import logging
 import sys
 from pathlib import Path
@@ -22,33 +24,37 @@ logger = get_logger(__name__)
 SAMPLE_DIR = Path(__file__).parent / "sample_reports"
 
 REPORT_METADATA = {
-    "report_2024_w01.md": {
-        "report_id": "report_2024_w01",
-        "report_type": "weekly",
-        "report_date": "2024-01-07",
-        "period_start": "2024-01-01",
-        "period_end": "2024-01-07",
+    "report_2016_dec.md": {
+        "report_id": "report_2016_dec",
+        "report_type": "monthly",
+        "report_date": "2016-12-31",
+        "period_start": "2016-12-01",
+        "period_end": "2016-12-31",
     },
-    "report_2024_w02.md": {
-        "report_id": "report_2024_w02",
-        "report_type": "weekly",
-        "report_date": "2024-01-14",
-        "period_start": "2024-01-08",
-        "period_end": "2024-01-14",
+    "report_2017_jan.md": {
+        "report_id": "report_2017_jan",
+        "report_type": "monthly",
+        "report_date": "2017-01-31",
+        "period_start": "2017-01-01",
+        "period_end": "2017-01-31",
     },
-    "report_2024_w03.md": {
-        "report_id": "report_2024_w03",
-        "report_type": "weekly",
-        "report_date": "2024-01-21",
-        "period_start": "2024-01-15",
-        "period_end": "2024-01-21",
+    "report_2017_feb.md": {
+        "report_id": "report_2017_feb",
+        "report_type": "monthly",
+        "report_date": "2017-02-28",
+        "period_start": "2017-02-01",
+        "period_end": "2017-02-28",
     },
 }
 
 
-def seed_reports(persist_dir: str = "data/chroma") -> int:
+def seed_reports(persist_dir: str = "data/chroma", clear: bool = False) -> int:
     """
     Read sample report files and store them in ChromaDB.
+
+    Args:
+        persist_dir: ChromaDB persistence directory.
+        clear: If True, clear existing collection before seeding.
 
     Returns:
         Total number of chunks stored.
@@ -56,6 +62,11 @@ def seed_reports(persist_dir: str = "data/chroma") -> int:
     from src.tools.rag_tools import ReportVectorStore
 
     store = ReportVectorStore(persist_dir=persist_dir)
+
+    if clear:
+        store.clear_collection()
+        logger.info("Cleared existing ChromaDB collection")
+
     total_chunks = 0
 
     for filename, meta in REPORT_METADATA.items():
@@ -85,5 +96,13 @@ def seed_reports(persist_dir: str = "data/chroma") -> int:
 
 
 if __name__ == "__main__":
-    total = seed_reports()
+    parser = argparse.ArgumentParser(description="Seed sample reports into ChromaDB")
+    parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear existing ChromaDB collection before seeding",
+    )
+    args = parser.parse_args()
+
+    total = seed_reports(clear=args.clear)
     print(f"Seeded {total} chunks into ChromaDB")

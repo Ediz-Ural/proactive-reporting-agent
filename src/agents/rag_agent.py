@@ -1,5 +1,5 @@
 """
-RAG Agent — Full implementation (Week 3).
+RAG Agent — Full implementation (Week 3, revised Week 6).
 
 Retrieves relevant historical report context from ChromaDB
 to help the Writer Agent produce contextually rich reports.
@@ -104,89 +104,89 @@ class RAGAgent:
         """Build multiple search queries based on analysis results."""
         queries = []
 
-        # 1. General period query
-        type_label = {
-            "weekly": "Haftalık",
-            "monthly": "Aylık",
-            "quarterly": "Çeyreklik",
-        }.get(report_type, "Haftalık")
-        queries.append(f"{type_label} satış raporu {start_date} {end_date}")
+        # 1. General performance query
+        queries.append("satış raporu gelir sipariş kâr performans")
 
-        # 2. Anomaly query
+        # 2. Anomaly query — collect anomalous columns
         anomalies = analysis_results.get("anomalies", [])
         if anomalies:
-            # Pick the first anomaly's category or metric
-            first = anomalies[0] if isinstance(anomalies, list) and anomalies else {}
-            cat = first.get("category", first.get("metric", "satış"))
-            queries.append(f"satış düşüşü anomali {cat}")
+            anomaly_cols: set[str] = set()
+            for a in anomalies[:3]:
+                col = a.get("column", a.get("metric", ""))
+                if col:
+                    anomaly_cols.add(col.replace("total_", ""))
+            if anomaly_cols:
+                queries.append(f"anomali {' '.join(anomaly_cols)} beklenmedik değişim")
 
-        # 3. Trend query
+        # 3. Significant trend query (direction: "up" / "down")
         trends = analysis_results.get("trends", {})
-        if isinstance(trends, dict):
-            for metric, trend_data in trends.items():
-                if isinstance(trend_data, dict):
-                    direction = trend_data.get("direction", "")
-                    if direction in ("increasing", "decreasing"):
-                        tr_label = "artış" if direction == "increasing" else "düşüş"
-                        queries.append(f"{metric} satış trendi {tr_label}")
-                        break  # One trend query is enough
+        for metric, data in trends.items():
+            if isinstance(data, dict):
+                direction = data.get("direction", "stable")
+                growth = abs(data.get("growth_rate_pct", 0))
+                if direction in ("up", "down") and growth > 10:
+                    label = "artış yükseliş" if direction == "up" else "düşüş azalma"
+                    queries.append(f"{metric.replace('total_', '')} {label} trend")
+                    break
 
-        # 4. Category query
+        # 4. Period comparison — significant change
+        comparison = analysis_results.get("period_comparison", {})
+        sales_change = comparison.get("total_sales_change_pct", 0)
+        if abs(sales_change) > 20:
+            change_label = "düşüş gerileme" if sales_change < 0 else "artış büyüme"
+            queries.append(f"satış {change_label} önceki dönem karşılaştırma")
+
+        # 5. Loss-making categories
         cat_perf = analysis_results.get("category_performance", [])
-        if cat_perf and isinstance(cat_perf, list):
-            # Best performing category
-            best = cat_perf[0] if cat_perf else {}
-            cat_name = best.get("category", "")
-            if cat_name:
-                queries.append(f"{cat_name} performansı satış gelir")
+        loss_cats = [
+            c.get("sub_category", c.get("category", ""))
+            for c in cat_perf
+            if isinstance(c, dict) and c.get("profit_margin_pct", 0) < 0
+        ]
+        if loss_cats:
+            queries.append(f"{' '.join(loss_cats[:2])} zarar negatif kâr marjı")
 
         return queries
 
     # ── Formatting ───────────────────────────────────────────────────────────
 
     def _format_context(self, chunks: list[dict[str, Any]]) -> str:
-        """Format retrieved chunks into a readable context string."""
+        """Format retrieved chunks into structured context for the Writer Agent."""
         if not chunks:
             return ""
 
         lines = ["## Geçmiş Rapor Bağlamı", ""]
 
-        # Group: similar period reports vs anomaly/trend history
-        period_chunks = []
-        other_chunks = []
+        for i, chunk in enumerate(chunks[:6], 1):
+            meta = chunk.get("metadata", {})
+            content = chunk.get("content", "")
+            distance = chunk.get("distance", 0)
 
-        for c in chunks:
-            meta = c.get("metadata", {})
-            if meta.get("report_type") == "weekly":
-                period_chunks.append(c)
+            # Period info
+            period_start = meta.get("period_start", "")
+            period_end = meta.get("period_end", "")
+            report_type = meta.get("report_type", "")
+            quality = meta.get("quality_score", "")
+
+            if period_start and period_end:
+                period_label = f"{period_start} — {period_end}"
             else:
-                other_chunks.append(c)
+                period_label = "Tarih bilgisi yok"
 
-        # If all are weekly, split by index
-        if not other_chunks and len(period_chunks) > 2:
-            other_chunks = period_chunks[2:]
-            period_chunks = period_chunks[:2]
+            relevance = (
+                "Yüksek" if distance < 0.5 else ("Orta" if distance < 1.0 else "Düşük")
+            )
 
-        if period_chunks:
-            lines.append("### Benzer Dönem Raporları")
-            for c in period_chunks[:3]:
-                meta = c.get("metadata", {})
-                source = meta.get("report_id", "bilinmeyen")
-                period = f"{meta.get('period_start', '?')} — {meta.get('period_end', '?')}"
-                lines.append(f"[Kaynak: {source} | Dönem: {period}]")
-                lines.append(c["content"])
-                lines.append("")
+            lines.append(f"### Geçmiş Rapor #{i} ({period_label})")
+            lines.append(f"*Tip: {report_type} | Benzerlik: {relevance}*")
+            lines.append("")
+            lines.append(content)
+            lines.append("")
 
-        if other_chunks:
-            lines.append("### İlgili Anomali/Trend Geçmişi")
-            for c in other_chunks[:3]:
-                meta = c.get("metadata", {})
-                source = meta.get("report_id", "bilinmeyen")
-                lines.append(f"[Kaynak: {source}]")
-                lines.append(c["content"])
-                lines.append("")
-
-        total = len(period_chunks) + len(other_chunks)
-        lines.append(f"Kaynak: {total} geçmiş rapor bölümünden derlenmiştir.")
+        lines.append("---")
+        lines.append(
+            f"*{len(chunks)} geçmiş rapor bölümünden derlenmiştir. "
+            f"Bu bağlamı kullanarak dönemler arası karşılaştırma ve tutarlı öneriler üret.*"
+        )
 
         return "\n".join(lines)

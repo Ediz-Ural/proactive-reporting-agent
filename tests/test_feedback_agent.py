@@ -206,3 +206,67 @@ class TestFeedbackAgent:
             result = agent.collect(self._make_state())
 
         assert result["feedback_metrics"]["period"] == "2024-01-01 to 2024-01-31"
+
+    # ── RAG quality gate tests ──────────────────────────────────────────────
+
+    def test_rag_store_skips_low_quality(self, tmp_path):
+        """Reports with quality_score < 0.7 are not stored in RAG."""
+        metrics_file = tmp_path / "metrics.jsonl"
+        state = self._make_state(
+            evaluation={"approved": True, "overall_score": 0.5, "feedback": "Weak."},
+        )
+
+        with patch("src.agents.feedback.METRICS_FILE", metrics_file), \
+             patch("src.agents.feedback.FeedbackAgent._store_report_in_rag") as mock_store:
+            agent = FeedbackAgent()
+            agent.collect(state)
+
+        # _store_report_in_rag is still called (approved=True), but inside it
+        # the quality gate should prevent actual storage. Since we mock the
+        # whole method here, just verify the call is made — the gate logic is
+        # unit-tested below.
+        mock_store.assert_called_once()
+
+    def test_rag_quality_gate_blocks_low_score(self, tmp_path):
+        """_store_report_in_rag bails early when quality < 0.7."""
+        state = self._make_state(
+            evaluation={"approved": True, "overall_score": 0.5},
+            final_report="Good report content here.",
+        )
+
+        with patch("src.tools.rag_tools.ReportVectorStore") as MockStore:
+            FeedbackAgent._store_report_in_rag(state)
+            MockStore.assert_not_called()
+
+    def test_rag_quality_gate_blocks_fallback_template(self, tmp_path):
+        """_store_report_in_rag bails on fallback template reports with score < 0.8."""
+        state = self._make_state(
+            evaluation={"approved": True, "overall_score": 0.75},
+            final_report="Rapor otomatik olarak oluşturulmuştur — 2024-01-07 12:00 UTC",
+        )
+
+        with patch("src.tools.rag_tools.ReportVectorStore") as MockStore:
+            FeedbackAgent._store_report_in_rag(state)
+            MockStore.assert_not_called()
+
+    def test_rag_store_uses_period_start_end_keys(self, tmp_path):
+        """Metadata uses period_start/period_end (not start_date/end_date)."""
+        state = self._make_state(
+            evaluation={"approved": True, "overall_score": 0.85},
+            final_report="A quality LLM-generated report.",
+        )
+
+        with patch("src.tools.rag_tools.ReportVectorStore") as MockStore:
+            mock_instance = MockStore.return_value
+            mock_instance.store_report.return_value = 3
+
+            FeedbackAgent._store_report_in_rag(state)
+
+            call_kwargs = mock_instance.store_report.call_args
+            metadata = call_kwargs[1]["metadata"] if "metadata" in (call_kwargs[1] or {}) else call_kwargs.kwargs.get("metadata", {})
+            assert "period_start" in metadata
+            assert "period_end" in metadata
+            assert metadata["period_start"] == "2024-01-01"
+            assert metadata["period_end"] == "2024-01-31"
+            assert "start_date" not in metadata
+            assert "end_date" not in metadata
