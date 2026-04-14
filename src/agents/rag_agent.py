@@ -64,12 +64,29 @@ class RAGAgent:
 
         queries = self._build_queries(analysis_results, start_date, end_date, report_type)
 
+        # Temporal filter: only pull reports generated BEFORE current period start.
+        # ChromaDB's $lt only accepts numeric operands, so we filter on the numeric
+        # period_end_ts field (YYYYMMDD int, auto-computed in store_report).
+        where_filter: dict[str, Any] | None = None
+        if start_date:
+            start_ts = int(start_date.replace("-", "")) if start_date else None
+            if start_ts is not None:
+                where_filter = {"period_end_ts": {"$lt": start_ts}}
+                logger.info(
+                    "RAGAgent: applying temporal filter — period_end_ts < %d",
+                    start_ts,
+                )
+
         # Execute all queries and collect unique chunks
         seen_ids: set[str] = set()
         all_chunks: list[dict[str, Any]] = []
 
         for query in queries:
-            results = store.search(query=query, top_k=3)
+            try:
+                results = store.search(query=query, top_k=3, where=where_filter)
+            except Exception as exc:
+                logger.warning("RAGAgent: search failed for query '%s': %s", query, exc)
+                continue
             for r in results:
                 chunk_id = r["metadata"].get("report_id", "") + str(
                     r["metadata"].get("chunk_index", "")

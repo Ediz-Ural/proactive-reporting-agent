@@ -63,7 +63,14 @@ class ReportVectorStore:
         Returns:
             Number of chunks stored.
         """
-        metadata = metadata or {}
+        metadata = dict(metadata or {})
+        # Auto-compute numeric period_end_ts (YYYYMMDD int) for range filtering.
+        # ChromaDB's $lt/$gt only accept numeric operands, not strings.
+        period_end = metadata.get("period_end")
+        if period_end and "period_end_ts" not in metadata:
+            ts = self._iso_date_to_int(period_end)
+            if ts is not None:
+                metadata["period_end_ts"] = ts
         chunks = self._split_by_sections(content, max_chunk_size=chunk_size)
 
         if not chunks:
@@ -171,6 +178,14 @@ class ReportVectorStore:
         logger.info("Collection cleared — %d documents removed", len(ids))
 
     # ── Helpers ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _iso_date_to_int(iso: str) -> int | None:
+        """Convert 'YYYY-MM-DD' to int YYYYMMDD, or None if malformed."""
+        try:
+            return int(iso.replace("-", ""))
+        except (ValueError, AttributeError):
+            return None
 
     @staticmethod
     def _split_by_sections(text: str, max_chunk_size: int = 1000) -> list[str]:

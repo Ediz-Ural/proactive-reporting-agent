@@ -3,7 +3,8 @@ Seed script — load sample reports into ChromaDB.
 
 Usage:
     python data/seed_reports.py
-    python data/seed_reports.py --clear   # clear existing data first
+    python data/seed_reports.py --clear       # clear existing data, then seed samples
+    python data/seed_reports.py --clear-only  # clear only, seed nothing
 """
 
 from __future__ import annotations
@@ -95,6 +96,20 @@ def seed_reports(persist_dir: str = "data/chroma", clear: bool = False) -> int:
     return total_chunks
 
 
+def clear_only(persist_dir: str = "data/chroma") -> None:
+    """Clear the ChromaDB collection without seeding any sample reports."""
+    from src.tools.rag_tools import ReportVectorStore
+
+    store = ReportVectorStore(persist_dir=persist_dir)
+    store.clear_collection()
+    stats = store.get_collection_stats()
+    logger.info(
+        "ChromaDB cleared. No samples seeded. (chunks=%d, reports=%d)",
+        stats["total_chunks"],
+        stats["total_reports"],
+    )
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Seed sample reports into ChromaDB")
     parser.add_argument(
@@ -102,7 +117,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Clear existing ChromaDB collection before seeding",
     )
+    parser.add_argument(
+        "--clear-only",
+        action="store_true",
+        help="Clear the collection without seeding any sample reports",
+    )
     args = parser.parse_args()
 
-    total = seed_reports(clear=args.clear)
-    print(f"Seeded {total} chunks into ChromaDB")
+    if args.clear_only:
+        clear_only()
+        print("ChromaDB cleared. No samples seeded.")
+        print("Collection is now empty.")
+    else:
+        total = seed_reports(clear=args.clear)
+        print(f"Seeded {total} chunks into ChromaDB")

@@ -294,6 +294,93 @@ class TestRAGAgent:
         )
         assert any("zarar" in q for q in queries)
 
+    def test_temporal_filtering_excludes_future_reports(self, tmp_path):
+        """RAG Agent should only pull reports with period_end < current start_date."""
+        from src.agents.rag_agent import RAGAgent
+        from src.tools.rag_tools import ReportVectorStore
+
+        persist_dir = str(tmp_path / "chroma_temporal")
+        store = ReportVectorStore(persist_dir=persist_dir, collection_name="reports")
+
+        store.store_report(
+            report_id="rpt_2014_dec",
+            content=(
+                "## Aralık 2014 Aylık Rapor\n"
+                "Toplam gelir 40000 TL. Technology kategorisi güçlü performans gösterdi. "
+                "Önceki aya göre %8 büyüme kaydedildi."
+            ),
+            metadata={
+                "report_type": "monthly",
+                "period_start": "2014-12-01",
+                "period_end": "2014-12-31",
+            },
+        )
+        store.store_report(
+            report_id="rpt_2015_jan",
+            content=(
+                "## Ocak 2015 Aylık Rapor\n"
+                "Ocak ayı satışları stabil. Mobilya kategorisi zayıf kaldı. "
+                "Toplam gelir 38000 TL olarak gerçekleşti."
+            ),
+            metadata={
+                "report_type": "monthly",
+                "period_start": "2015-01-01",
+                "period_end": "2015-01-31",
+            },
+        )
+        store.store_report(
+            report_id="rpt_2017_jan",
+            content=(
+                "## Ocak 2017 Aylık Rapor\n"
+                "2017 yılı güçlü başladı. Teknoloji segmentinde %20 büyüme. "
+                "Toplam gelir 55000 TL."
+            ),
+            metadata={
+                "report_type": "monthly",
+                "period_start": "2017-01-01",
+                "period_end": "2017-01-31",
+            },
+        )
+
+        agent = RAGAgent(persist_dir=persist_dir)
+        state = self._make_state(
+            start_date="2015-01-01",
+            end_date="2015-01-31",
+            report_type="monthly",
+        )
+        result = agent.retrieve(state)
+        context = result["historical_context"]
+
+        assert "2014-12-31" in context
+        assert "2015-01-31" not in context
+        assert "2017-01-31" not in context
+
+    def test_temporal_filtering_empty_when_no_prior_reports(self, tmp_path):
+        """If only future reports exist, historical_context should be empty."""
+        from src.agents.rag_agent import RAGAgent
+        from src.tools.rag_tools import ReportVectorStore
+
+        persist_dir = str(tmp_path / "chroma_future_only")
+        store = ReportVectorStore(persist_dir=persist_dir, collection_name="reports")
+        store.store_report(
+            report_id="rpt_future",
+            content="## Gelecek Rapor\nBu rapor gelecekten geldi. Toplam gelir 50000 TL.",
+            metadata={
+                "report_type": "monthly",
+                "period_start": "2017-01-01",
+                "period_end": "2017-01-31",
+            },
+        )
+
+        agent = RAGAgent(persist_dir=persist_dir)
+        state = self._make_state(
+            start_date="2014-01-01",
+            end_date="2014-01-31",
+            report_type="monthly",
+        )
+        result = agent.retrieve(state)
+        assert result["historical_context"] == ""
+
     def test_build_queries_minimal(self, populated_store_dir):
         from src.agents.rag_agent import RAGAgent
 
