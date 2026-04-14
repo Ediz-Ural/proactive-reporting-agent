@@ -260,6 +260,89 @@ class TestWriterAgent:
         agent = WriterAgent(strategy="invalid_strategy")
         assert agent.strategy == "few_shot"
 
+    # ── Summary block tests ─────────────────────────────────────────────────
+
+    def test_summary_block_included_in_prompt(self):
+        from src.agents.writer import WriterAgent
+
+        agent = WriterAgent(strategy="few_shot")
+        raw_data = {
+            "weekly_summary": {
+                "total_revenue": 20301.12,
+                "total_profit": 1613.88,
+                "total_orders": 53,
+                "avg_order_value": 383.04,
+                "unique_customers": 53,
+                "profit_margin_pct": 7.95,
+            }
+        }
+        prompt = agent._build_prompt(
+            analysis_results={"trends": {}},
+            historical_context="",
+            start_date="2017-02-01",
+            end_date="2017-02-28",
+            report_type="monthly",
+            raw_data=raw_data,
+            evaluation=None,
+        )
+        assert "KAYNAK VERİ" in prompt
+        assert "20301.12" in prompt
+        assert "53" in prompt
+
+    def test_summary_block_empty_when_no_summary(self):
+        from src.agents.writer import WriterAgent
+
+        block = WriterAgent._build_summary_block({})
+        assert block == ""
+
+    def test_summary_block_all_fields(self):
+        from src.agents.writer import WriterAgent
+
+        raw_data = {
+            "weekly_summary": {
+                "total_revenue": 99999.99,
+                "total_profit": 5000.0,
+                "total_orders": 100,
+                "avg_order_value": 999.99,
+                "unique_customers": 77,
+                "profit_margin_pct": 5.0,
+            }
+        }
+        block = WriterAgent._build_summary_block(raw_data)
+        assert "99999.99" in block
+        assert "5000.0" in block
+        assert "100" in block
+        assert "999.99" in block
+        assert "77" in block
+        assert "%5.0" in block
+
+    def test_summary_block_in_all_strategies(self):
+        from src.agents.writer import WriterAgent
+
+        raw_data = {
+            "weekly_summary": {
+                "total_revenue": 12345.0,
+                "total_profit": 1000.0,
+                "total_orders": 50,
+                "avg_order_value": 246.9,
+                "unique_customers": 40,
+                "profit_margin_pct": 8.1,
+            }
+        }
+        for strategy in ("zero_shot", "few_shot", "cot"):
+            agent = WriterAgent(strategy=strategy)
+            prompt = agent._build_prompt(
+                analysis_results={},
+                historical_context="",
+                start_date="2024-01-01",
+                end_date="2024-01-31",
+                report_type="monthly",
+                raw_data=raw_data,
+                evaluation=None,
+            )
+            assert "KAYNAK VERİ" in prompt, f"Missing in {strategy}"
+            assert "12345.0" in prompt, f"Revenue missing in {strategy}"
+
     # ── Truncation ───────────────────────────────────────────────────────────
 
     def test_truncate_analysis(self):

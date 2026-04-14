@@ -61,6 +61,9 @@ KURALLAR:
 - Hallucination yapma — sadece verilen verileri kullan
 - Maksimum 500 kelime
 - Eğer geçmiş bağlam boşsa, geçmiş karşılaştırma bölümünü atla
+- Özet göstergelerdeki TÜM rakamlar (gelir, sipariş, müşteri, kâr) SADECE KAYNAK VERİ bloğundan alınmalıdır
+- customer_metrics listesindeki segment bazlı unique_customers değerlerini TOPLAMA — KAYNAK VERİ'deki unique_customers zaten toplam sayıdır
+- Herhangi bir rakamı "yaklaşık", "civarında" gibi ifadelerle değiştirme
 """
 
 # ── Few-shot example reports ─────────────────────────────────────────────────
@@ -204,21 +207,26 @@ Geri Bildirim: {evaluation.get('feedback', 'N/A')}
 Lütfen yukarıdaki geri bildirimi dikkate alarak raporu yeniden yaz.
 """
 
+        # Extract summary block so LLM sees exact figures up front
+        summary_block = self._build_summary_block(raw_data)
+
         analysis_json = self._truncate_analysis(analysis_results)
         hist = historical_context or "Geçmiş rapor verisi bulunmamaktadır."
 
         if self.strategy == "zero_shot":
-            return self._build_zero_shot_prompt(system, analysis_json, hist, revision_note)
+            return self._build_zero_shot_prompt(system, analysis_json, hist, revision_note, summary_block)
         elif self.strategy == "cot":
-            return self._build_cot_prompt(system, analysis_json, hist, revision_note)
+            return self._build_cot_prompt(system, analysis_json, hist, revision_note, summary_block)
         else:
-            return self._build_few_shot_prompt(system, analysis_json, hist, revision_note)
+            return self._build_few_shot_prompt(system, analysis_json, hist, revision_note, summary_block)
 
     def _build_zero_shot_prompt(
-        self, system: str, analysis_json: str, hist: str, revision_note: str
+        self, system: str, analysis_json: str, hist: str, revision_note: str,
+        summary_block: str = "",
     ) -> str:
         return f"""{system}
 {revision_note}
+{summary_block}
 Analiz Sonuçları:
 {analysis_json}
 
@@ -228,7 +236,8 @@ Geçmiş Rapor Bağlamı:
 Raporu yaz:"""
 
     def _build_few_shot_prompt(
-        self, system: str, analysis_json: str, hist: str, revision_note: str
+        self, system: str, analysis_json: str, hist: str, revision_note: str,
+        summary_block: str = "",
     ) -> str:
         return f"""{system}
 
@@ -242,6 +251,7 @@ Raporu yaz:"""
 {revision_note}
 Şimdi aşağıdaki veriler için rapor yaz:
 
+{summary_block}
 Analiz Sonuçları:
 {analysis_json}
 
@@ -251,18 +261,20 @@ Geçmiş Rapor Bağlamı:
 Raporu yaz:"""
 
     def _build_cot_prompt(
-        self, system: str, analysis_json: str, hist: str, revision_note: str
+        self, system: str, analysis_json: str, hist: str, revision_note: str,
+        summary_block: str = "",
     ) -> str:
         return f"""{system}
 
 Adım adım düşün:
-1. Önce trend verilerini incele ve önemli değişimleri belirle
-2. Anomalileri değerlendir ve olası nedenlerini düşün
-3. Geçmiş raporlarla karşılaştırma yap
-4. Tahmin verilerini yorumla
-5. Tüm bulgulardan aksiyon önerileri çıkar
-6. Son olarak özet göstergeleri derle
+1. Önce KAYNAK VERİ bloğundaki özet göstergeleri not al
+2. Trend verilerini incele ve önemli değişimleri belirle
+3. Anomalileri değerlendir ve olası nedenlerini düşün
+4. Geçmiş raporlarla karşılaştırma yap
+5. Tahmin verilerini yorumla
+6. Tüm bulgulardan aksiyon önerileri çıkar
 {revision_note}
+{summary_block}
 Analiz Sonuçları:
 {analysis_json}
 
@@ -270,6 +282,29 @@ Geçmiş Rapor Bağlamı:
 {hist}
 
 Şimdi adım adım düşünerek raporu yaz:"""
+
+    # ── Summary block ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _build_summary_block(raw_data: dict[str, Any]) -> str:
+        """Build an explicit source-of-truth block from weekly_summary.
+
+        Placed at the top of the prompt so the LLM uses these exact figures
+        for the Özet Göstergeler section instead of deriving (and potentially
+        hallucinating) numbers from the analysis JSON.
+        """
+        summary = raw_data.get("weekly_summary", {})
+        if not summary:
+            return ""
+        return (
+            "KAYNAK VERİ — ÖZET GÖSTERGELER (Bu rakamları AYNEN kullan):\n"
+            f"- Toplam gelir: {summary.get('total_revenue', 'N/A')} TL\n"
+            f"- Toplam kâr: {summary.get('total_profit', 'N/A')} TL\n"
+            f"- Sipariş sayısı: {summary.get('total_orders', 'N/A')}\n"
+            f"- Ortalama sipariş değeri: {summary.get('avg_order_value', 'N/A')} TL\n"
+            f"- Benzersiz müşteri: {summary.get('unique_customers', 'N/A')}\n"
+            f"- Kâr marjı: %{summary.get('profit_margin_pct', 'N/A')}\n"
+        )
 
     # ── LLM call ─────────────────────────────────────────────────────────────
 

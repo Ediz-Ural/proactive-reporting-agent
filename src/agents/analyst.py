@@ -228,6 +228,7 @@ class AnalystAgent:
             prev_start, prev_end = get_previous_period(
                 date.fromisoformat(start_date),
                 date.fromisoformat(end_date),
+                report_type=report_type,
             )
             prev_data = get_sales_by_period(str(prev_start), str(prev_end))
             comparison = calculate_period_comparison(daily_sales, prev_data)
