@@ -7,7 +7,6 @@ generating a report for the previous month.
 
 from __future__ import annotations
 
-import calendar
 import logging
 from datetime import date, timedelta
 

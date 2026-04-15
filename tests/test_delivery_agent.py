@@ -8,7 +8,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -55,7 +54,7 @@ class TestDeliveryAgent:
 
         state = self._make_state(recipients=["recipient@test.com"])
 
-        with patch("src.agents.delivery.smtplib.SMTP") as mock_smtp, \
+        with patch("src.agents.delivery.smtplib.SMTP"), \
              patch("src.agents.delivery.DeliveryAgent._send_email") as mock_send:
             mock_send.return_value = {
                 "sent": True,

@@ -42,6 +42,7 @@ class FeedbackAgent:
         delivery_status = state.get("delivery_status") or {}
         analysis_results = state.get("analysis_results") or {}
         analysis_metadata = analysis_results.get("analysis_metadata", {})
+        raw_data = state.get("raw_data") or {}
 
         metrics = {
             "run_id": state.get("run_id", ""),
@@ -56,6 +57,18 @@ class FeedbackAgent:
             "analyses_completed": analysis_metadata.get("analyses_completed", []),
             "analyses_failed": analysis_metadata.get("analyses_failed", []),
             "had_historical_context": bool(state.get("historical_context")),
+            # Dashboard KPI payload — snapshot of this run's headline figures
+            "weekly_summary": raw_data.get("weekly_summary") or {},
+            "period_comparison": analysis_results.get("period_comparison") or {},
+            "evaluation": {
+                "overall_score": evaluation.get("overall_score", 0),
+                "approved": evaluation.get("approved", False),
+                "numerical_accuracy": evaluation.get("numerical_accuracy"),
+                "completeness": evaluation.get("completeness"),
+                "readability": evaluation.get("readability"),
+                "actionability": evaluation.get("actionability"),
+                "hallucination_free": evaluation.get("hallucination_free"),
+            },
         }
 
         # Save metrics to JSONL file

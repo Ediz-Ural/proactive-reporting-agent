@@ -50,6 +50,12 @@ export interface Evaluation {
   feedback: string;
 }
 
+export interface PeriodComparison {
+  total_sales_change_pct?: number;
+  total_profit_change_pct?: number;
+  total_orders_change_pct?: number;
+}
+
 export interface PipelineRun {
   run_id: string;
   timestamp: string;
@@ -59,6 +65,9 @@ export interface PipelineRun {
   evaluator_iterations: number;
   delivery_sent: boolean;
   error_count: number;
+  weekly_summary?: Partial<WeeklySummary>;
+  period_comparison?: PeriodComparison;
+  evaluation?: Partial<Evaluation>;
 }
 
 export interface DailySales {

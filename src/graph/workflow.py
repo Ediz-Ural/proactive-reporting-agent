@@ -11,7 +11,6 @@ Pipeline:
 """
 
 import uuid
-from datetime import date
 from langgraph.graph import END, START, StateGraph
 
 from src.graph.state import AgentState

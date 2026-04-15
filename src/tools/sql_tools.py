@@ -8,7 +8,7 @@ The DB engine is constructed from config/settings.py and cached at module level.
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime
+from datetime import date
 from functools import lru_cache
 
 import pandas as pd

@@ -62,7 +62,22 @@ export default function Dashboard() {
   }
 
   // Extract KPI data from latest run if available
-  const summary = (latestRun?.run as unknown as Record<string, unknown>)?.weekly_summary as Record<string, number> | undefined;
+  const summary = latestRun?.run.weekly_summary;
+  const comparison = latestRun?.run.period_comparison;
+
+  const formatCurrency = (v: number | undefined): string => {
+    if (v === undefined || v === null) return '-';
+    return new Intl.NumberFormat('tr-TR', {
+      style: 'currency',
+      currency: 'TRY',
+      maximumFractionDigits: 0,
+    }).format(v);
+  };
+
+  const formatNumber = (v: number | undefined): string => {
+    if (v === undefined || v === null) return '-';
+    return new Intl.NumberFormat('tr-TR').format(v);
+  };
 
   return (
     <div className="space-y-6">
@@ -78,26 +93,34 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Toplam Gelir"
-          value={summary?.total_revenue ? `$${summary.total_revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '-'}
+          value={formatCurrency(summary?.total_revenue)}
           icon={DollarSign}
-          change={summary?.growth_rate_pct as number | undefined}
+          change={comparison?.total_sales_change_pct}
         />
         <KPICard
           title="Toplam Kar"
-          value={summary?.total_profit ? `$${summary.total_profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '-'}
+          value={formatCurrency(summary?.total_profit)}
           icon={TrendingUp}
+          change={comparison?.total_profit_change_pct}
         />
         <KPICard
           title="Siparis Sayisi"
-          value={summary?.total_orders || '-'}
+          value={formatNumber(summary?.total_orders)}
           icon={ShoppingCart}
+          change={comparison?.total_orders_change_pct}
         />
         <KPICard
           title="Musteri Sayisi"
-          value={summary?.unique_customers || '-'}
+          value={formatNumber(summary?.unique_customers)}
           icon={Users}
         />
       </div>
+
+      {!latestRun && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
+          Henuz rapor uretilmemis. Ilk raporu uretmek icin Pipeline sayfasina gidin.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Latest Report */}

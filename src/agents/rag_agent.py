@@ -183,7 +183,6 @@ class RAGAgent:
             period_start = meta.get("period_start", "")
             period_end = meta.get("period_end", "")
             report_type = meta.get("report_type", "")
-            quality = meta.get("quality_score", "")
 
             if period_start and period_end:
                 period_label = f"{period_start} — {period_end}"

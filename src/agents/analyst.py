@@ -71,7 +71,6 @@ class AnalystAgent:
         results: dict[str, Any] = {}
         completed: list[str] = []
         failed: list[str] = []
-        errors: list[str] = []
 
         # Convert raw_data lists to DataFrames
         daily_sales = pd.DataFrame(raw_data.get("daily_sales", []))

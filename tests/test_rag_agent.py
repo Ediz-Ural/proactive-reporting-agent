@@ -5,9 +5,7 @@ Tests for RAG tools (ReportVectorStore) and RAG Agent.
 from __future__ import annotations
 
 import sys
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 

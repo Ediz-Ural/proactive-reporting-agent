@@ -209,7 +209,6 @@ class DeliveryAgent:
         ]
 
         # Extract summary indicators and key findings
-        in_section = False
         section_lines: list[str] = []
 
         for line in lines:

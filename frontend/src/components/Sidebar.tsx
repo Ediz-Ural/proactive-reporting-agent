@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   Play,
   FileText,
-  BarChart3,
   Settings,
 } from 'lucide-react';
 
@@ -11,7 +10,6 @@ const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/pipeline', label: 'Pipeline', icon: Play },
   { to: '/reports', label: 'Raporlar', icon: FileText },
-  { to: '/analytics', label: 'Analizler', icon: BarChart3 },
   { to: '/settings', label: 'Ayarlar', icon: Settings },
 ];
 
