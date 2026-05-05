@@ -240,6 +240,24 @@ class DeliveryAgent:
 
     # ── File fallback ────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _get_company_name(company_id: int) -> str:
+        """Look up company name from DB, fallback to company_id."""
+        try:
+            from sqlalchemy import text
+            from src.tools.sql_tools import get_db_engine
+            engine = get_db_engine()
+            with engine.connect() as conn:
+                row = conn.execute(
+                    text("SELECT name FROM companies WHERE id = :cid"),
+                    {"cid": company_id},
+                ).fetchone()
+                if row:
+                    return row[0]
+        except Exception:
+            pass
+        return f"Company_{company_id}"
+
     def _save_fallback(
         self, report_content: str, start_date: str, end_date: str, company_id: int = 1,
     ) -> dict:
@@ -248,10 +266,14 @@ class DeliveryAgent:
 
         output_dir = f"data/reports/{company_id}"
 
-        # Save markdown version
-        md_path = save_report_to_file(report_content, output_dir=output_dir, format="md")
+        company_name = self._get_company_name(company_id)
+        safe_name = company_name.replace(" ", "_").replace(".", "")
+        base_name = f"{safe_name}_{start_date}_{end_date}"
 
-        # Save HTML version
+        md_path = save_report_to_file(
+            report_content, output_dir=output_dir, filename=f"{base_name}.md", format="md",
+        )
+
         html_content = render_report(
             report_content,
             context={
@@ -259,7 +281,9 @@ class DeliveryAgent:
                 "period": f"{start_date} — {end_date}",
             },
         )
-        html_path = save_report_to_file(html_content, output_dir=output_dir, format="html")
+        html_path = save_report_to_file(
+            html_content, output_dir=output_dir, filename=f"{base_name}.html", format="html",
+        )
 
         return {
             "saved_files": [md_path, html_path],

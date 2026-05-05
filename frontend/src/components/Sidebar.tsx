@@ -10,14 +10,15 @@ import {
   LogOut,
 } from 'lucide-react';
 
-const baseLinks = [
+const userLinks = [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+];
+
+const adminLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/pipeline', label: 'Pipeline', icon: Play },
   { to: '/reports', label: 'Raporlar', icon: FileText },
   { to: '/settings', label: 'Ayarlar', icon: Settings },
-];
-
-const adminLinks = [
   { to: '/admin/upload', label: 'Veri Yukle', icon: Upload },
   { to: '/admin/companies', label: 'Sirketler', icon: Building2 },
   { to: '/admin/users', label: 'Kullanicilar', icon: Users },
@@ -26,13 +27,16 @@ const adminLinks = [
 export default function Sidebar() {
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isAdmin = user.role === 'admin';
-  const links = isAdmin ? [...baseLinks, ...adminLinks] : baseLinks;
+  const links = isAdmin ? adminLinks : userLinks;
 
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     window.location.href = '/login';
   };
+
+  const mainLinks = isAdmin ? links.filter(l => !['/admin/upload', '/admin/companies', '/admin/users'].includes(l.to)) : links;
+  const adminOnlyLinks = isAdmin ? links.filter(l => ['/admin/upload', '/admin/companies', '/admin/users'].includes(l.to)) : [];
 
   return (
     <aside className="w-56 bg-gray-900 text-gray-300 flex flex-col shrink-0">
@@ -43,7 +47,7 @@ export default function Sidebar() {
         <p className="text-xs text-gray-500 mt-0.5">Multi-Agent System</p>
       </div>
       <nav className="flex-1 py-3 space-y-0.5 px-2">
-        {baseLinks.map(({ to, label, icon: Icon }) => (
+        {mainLinks.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -61,12 +65,12 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
-        {isAdmin && (
+        {adminOnlyLinks.length > 0 && (
           <>
             <div className="pt-3 pb-1 px-3">
               <p className="text-xs text-gray-500 uppercase tracking-wider">Admin</p>
             </div>
-            {adminLinks.map(({ to, label, icon: Icon }) => (
+            {adminOnlyLinks.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}

@@ -36,9 +36,9 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/pipeline" element={<Pipeline />} />
+          <Route path="/pipeline" element={<AdminRoute><Pipeline /></AdminRoute>} />
           <Route path="/reports" element={<Reports />} />
-          <Route path="/settings" element={<Settings />} />
+          <Route path="/settings" element={<AdminRoute><Settings /></AdminRoute>} />
           <Route path="/admin/upload" element={<AdminRoute><UploadData /></AdminRoute>} />
           <Route path="/admin/companies" element={<AdminRoute><Companies /></AdminRoute>} />
           <Route path="/admin/users" element={<AdminRoute><Users /></AdminRoute>} />
