@@ -50,7 +50,7 @@ class AnalystAgent:
         """
         Run the full analysis pipeline.
 
-        Reads from state: raw_data, start_date, end_date, report_type, analysis_plan
+        Reads from state: raw_data, start_date, end_date, report_type, analysis_plan, company_id
         Writes to state: analysis_results, current_agent, errors
 
         Returns:
@@ -62,6 +62,7 @@ class AnalystAgent:
         start_date: str = state.get("start_date", "")
         end_date: str = state.get("end_date", "")
         report_type: str = state.get("report_type", "weekly")
+        company_id: int = state.get("company_id", 1)
         analysis_plan: list[str] = state.get("analysis_plan") or [
             "trends", "anomalies", "period_comparison",
             "category_performance", "forecast", "decomposition",
@@ -94,7 +95,7 @@ class AnalystAgent:
         # ── 3. Period comparison ─────────────────────────────────────────────
         if "period_comparison" in analysis_plan:
             results["period_comparison"], ok = self._run_period_comparison(
-                daily_sales, start_date, end_date, report_type,
+                daily_sales, start_date, end_date, report_type, company_id,
             )
             (completed if ok else failed).append("period_comparison")
 
@@ -115,7 +116,7 @@ class AnalystAgent:
 
         # ── 7. RFM Segmentation ──────────────────────────────────────────────
         if "rfm_segments" in analysis_plan:
-            results["rfm_segments"], ok = self._run_rfm(start_date, end_date)
+            results["rfm_segments"], ok = self._run_rfm(start_date, end_date, company_id)
             (completed if ok else failed).append("rfm_segments")
 
         # ── Metadata ─────────────────────────────────────────────────────────
@@ -219,6 +220,7 @@ class AnalystAgent:
         start_date: str,
         end_date: str,
         report_type: str,
+        company_id: int = 1,
     ) -> tuple[dict, bool]:
         """Fetch previous period data and calculate period-over-period change."""
         try:
@@ -229,7 +231,7 @@ class AnalystAgent:
                 date.fromisoformat(end_date),
                 report_type=report_type,
             )
-            prev_data = get_sales_by_period(str(prev_start), str(prev_end))
+            prev_data = get_sales_by_period(str(prev_start), str(prev_end), company_id=company_id)
             comparison = calculate_period_comparison(daily_sales, prev_data)
             logger.info("Period comparison complete")
             return comparison, True
@@ -290,7 +292,7 @@ class AnalystAgent:
             return {}, False
 
     def _run_rfm(
-        self, start_date: str, end_date: str,
+        self, start_date: str, end_date: str, company_id: int = 1,
     ) -> tuple[dict, bool]:
         """Query DB for per-customer orders and run RFM segmentation."""
         try:
@@ -301,8 +303,9 @@ class AnalystAgent:
                 SELECT customer_id, order_date, sales
                 FROM orders
                 WHERE order_date BETWEEN :start_date AND :end_date
+                  AND company_id = :company_id
                 """,
-                {"start_date": start_date, "end_date": end_date},
+                {"start_date": start_date, "end_date": end_date, "company_id": company_id},
             )
             if orders_df.empty:
                 logger.info("RFM skipped — no customer data")

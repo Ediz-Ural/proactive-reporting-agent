@@ -8,6 +8,11 @@ from pydantic import Field
 
 
 class Settings(BaseSettings):
+    # ── Auth ─────────────────────────────────────────────────────────────────
+    JWT_SECRET_KEY: str = Field(default="change-me-in-production-use-a-real-secret-key")
+    JWT_ALGORITHM: str = Field(default="HS256")
+    JWT_EXPIRE_MINUTES: int = Field(default=480)  # 8 hours
+
     # ── Database ──────────────────────────────────────────────────────────────
     DB_TYPE: str = Field(default="sqlite", description="sqlite or mysql")
     DB_HOST: str = Field(default="localhost")

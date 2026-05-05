@@ -1,18 +1,31 @@
 """
 FastAPI application — API for triggering and monitoring the reporting pipeline.
 
-Week 6: Added CORS, /runs/latest, /runs/{run_id}, /run/sync, /reports,
-         /reports/{filename}, /db/stats endpoints for React dashboard.
+v0.7.0: JWT authentication, multi-tenant company isolation, admin panel endpoints.
 """
 
+import io
 import json
 import uuid
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+import pandas as pd
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
+from sqlalchemy import text
+
+from src.auth import (
+    TokenData,
+    authenticate_user,
+    create_access_token,
+    get_current_user,
+    hash_password,
+    require_admin,
+)
 
 
 @asynccontextmanager
@@ -28,7 +41,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Proactive Reporting Agent",
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
 )
 
@@ -58,6 +71,33 @@ class PipelineResponse(BaseModel):
     message: str
 
 
+class RegisterRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    company_id: int
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: dict
+
+
+class CompanyCreate(BaseModel):
+    name: str
+    slug: str
+    email_domain: str = ""
+
+
+class AdminReportRequest(BaseModel):
+    start_date: date
+    end_date: date
+    report_type: str = "monthly"
+    company_id: int
+    recipients: list[str] = []
+
+
 # ── Helper: read JSONL runs ──────────────────────────────────────────────────
 
 METRICS_PATH = Path("data/metrics/pipeline_runs.jsonl")
@@ -82,12 +122,86 @@ def _read_all_runs() -> list[dict]:
     return runs
 
 
-# ── Pipeline endpoints ────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# AUTH ENDPOINTS (public — no token required)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/auth/login", response_model=LoginResponse)
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Login and get JWT token."""
+    user = authenticate_user(form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(401, "Invalid email or password")
+
+    token = create_access_token({
+        "user_id": user["id"],
+        "email": user["email"],
+        "role": user["role"],
+        "company_id": user["company_id"],
+        "company_name": user["company_name"],
+    })
+
+    return LoginResponse(
+        access_token=token,
+        user={
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user["full_name"],
+            "role": user["role"],
+            "company_id": user["company_id"],
+            "company_name": user["company_name"],
+        },
+    )
+
+
+@app.post("/auth/register")
+async def register(req: RegisterRequest, admin: TokenData = Depends(require_admin)):
+    """Register a new user (admin only)."""
+    from src.tools.sql_tools import get_db_engine
+
+    engine = get_db_engine()
+    with engine.begin() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": req.email},
+        ).fetchone()
+        if existing:
+            raise HTTPException(400, "Email already registered")
+
+        conn.execute(text("""
+            INSERT INTO users (email, password_hash, full_name, role, company_id)
+            VALUES (:email, :hash, :name, 'user', :cid)
+        """), {
+            "email": req.email,
+            "hash": hash_password(req.password),
+            "name": req.full_name,
+            "cid": req.company_id,
+        })
+
+    return {"message": "User registered", "email": req.email}
+
+
+@app.get("/auth/me")
+async def get_me(current_user: TokenData = Depends(get_current_user)):
+    """Get current user info."""
+    return {
+        "user_id": current_user.user_id,
+        "email": current_user.email,
+        "role": current_user.role,
+        "company_id": current_user.company_id,
+        "company_name": current_user.company_name,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PIPELINE ENDPOINTS (authenticated)
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.post("/run", response_model=PipelineResponse)
 async def run_pipeline_endpoint(
     request: PipelineRequest,
     background_tasks: BackgroundTasks,
+    current_user: TokenData = Depends(get_current_user),
 ):
     """Trigger the full reporting pipeline."""
     from src.graph.workflow import run_pipeline
@@ -100,6 +214,7 @@ async def run_pipeline_endpoint(
         end_date=request.end_date,
         report_type=request.report_type,
         recipients=request.recipients,
+        company_id=current_user.company_id,
     )
 
     return PipelineResponse(
@@ -110,7 +225,10 @@ async def run_pipeline_endpoint(
 
 
 @app.post("/run/monthly", response_model=PipelineResponse)
-async def run_monthly_endpoint(background_tasks: BackgroundTasks):
+async def run_monthly_endpoint(
+    background_tasks: BackgroundTasks,
+    current_user: TokenData = Depends(get_current_user),
+):
     """Manually trigger the monthly report for the previous month."""
     from src.scheduler import get_previous_month_range
     from src.graph.workflow import run_pipeline_with_retry
@@ -123,6 +241,7 @@ async def run_monthly_endpoint(background_tasks: BackgroundTasks):
         start_date=start_date,
         end_date=end_date,
         report_type="monthly",
+        company_id=current_user.company_id,
     )
 
     return PipelineResponse(
@@ -133,11 +252,11 @@ async def run_monthly_endpoint(background_tasks: BackgroundTasks):
 
 
 @app.post("/run/sync")
-async def run_pipeline_sync(request: PipelineRequest):
-    """
-    Run the pipeline synchronously and return the full result.
-    Used by the dashboard for live results.
-    """
+async def run_pipeline_sync(
+    request: PipelineRequest,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """Run the pipeline synchronously and return the full result."""
     from src.graph.workflow import run_pipeline
 
     state = run_pipeline(
@@ -145,6 +264,7 @@ async def run_pipeline_sync(request: PipelineRequest):
         end_date=request.end_date,
         report_type=request.report_type,
         recipients=request.recipients,
+        company_id=current_user.company_id,
     )
 
     return {
@@ -159,7 +279,9 @@ async def run_pipeline_sync(request: PipelineRequest):
     }
 
 
-# ── Health & monitoring ───────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# HEALTH & MONITORING (public — /health; authenticated — others)
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.get("/health")
 async def health():
@@ -171,33 +293,43 @@ async def health():
 
     return {
         "status": "ok" if db_status["connected"] else "degraded",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "database": db_status,
         "scheduler_enabled": settings.SCHEDULER_ENABLED,
     }
 
 
 @app.get("/runs")
-async def list_runs(limit: int = 20):
-    """List recent pipeline runs from the JSONL metrics file."""
+async def list_runs(
+    limit: int = 20,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """List recent pipeline runs for current user's company."""
     all_runs = _read_all_runs()
-    runs = list(reversed(all_runs))[:limit]
+    company_runs = [
+        r for r in all_runs
+        if r.get("company_id", 1) == current_user.company_id
+    ]
+    runs = list(reversed(company_runs))[:limit]
     return {"runs": runs, "total": len(runs)}
 
 
 @app.get("/runs/latest")
-async def get_latest_run():
+async def get_latest_run(current_user: TokenData = Depends(get_current_user)):
     """Return the most recent pipeline run with report content if available."""
     all_runs = _read_all_runs()
-    if not all_runs:
+    company_runs = [
+        r for r in all_runs
+        if r.get("company_id", 1) == current_user.company_id
+    ]
+    if not company_runs:
         raise HTTPException(status_code=404, detail="No pipeline runs found")
 
-    latest = all_runs[-1]
+    latest = company_runs[-1]
 
-    # Try to find the most recent report file
     report_content = None
     report_html = None
-    reports_dir = Path("data/reports")
+    reports_dir = Path(f"data/reports/{current_user.company_id}")
     if reports_dir.exists():
         md_files = sorted(reports_dir.glob("*.md"), reverse=True)
         if md_files:
@@ -217,11 +349,14 @@ async def get_latest_run():
 
 
 @app.get("/runs/{run_id}")
-async def get_run_detail(run_id: str):
+async def get_run_detail(
+    run_id: str,
+    current_user: TokenData = Depends(get_current_user),
+):
     """Return details of a specific pipeline run by run_id."""
     all_runs = _read_all_runs()
     for run in all_runs:
-        if run.get("run_id") == run_id:
+        if run.get("run_id") == run_id and run.get("company_id", 1) == current_user.company_id:
             return {"run": run}
     raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
 
@@ -229,9 +364,9 @@ async def get_run_detail(run_id: str):
 # ── Reports endpoints ─────────────────────────────────────────────────────────
 
 @app.get("/reports")
-async def list_reports():
-    """List report files in data/reports/."""
-    reports_dir = Path("data/reports")
+async def list_reports(current_user: TokenData = Depends(get_current_user)):
+    """List report files for current user's company."""
+    reports_dir = Path(f"data/reports/{current_user.company_id}")
     if not reports_dir.exists():
         return {"reports": []}
 
@@ -248,13 +383,15 @@ async def list_reports():
 
 
 @app.get("/reports/{filename}")
-async def get_report(filename: str):
+async def get_report(
+    filename: str,
+    current_user: TokenData = Depends(get_current_user),
+):
     """Return the content of a specific report file."""
-    # Prevent path traversal
     if ".." in filename or "/" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    md_path = Path("data/reports") / filename
+    md_path = Path(f"data/reports/{current_user.company_id}") / filename
     if not md_path.exists():
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -272,26 +409,34 @@ async def get_report(filename: str):
 # ── Database stats ────────────────────────────────────────────────────────────
 
 @app.get("/db/stats")
-async def db_stats():
-    """Return database summary statistics."""
+async def db_stats(current_user: TokenData = Depends(get_current_user)):
+    """Return database summary statistics for current user's company."""
     from src.tools.sql_tools import execute_query
 
+    cid = current_user.company_id
     try:
-        total = execute_query("SELECT COUNT(*) as cnt FROM orders")
+        total = execute_query(
+            "SELECT COUNT(*) as cnt FROM orders WHERE company_id = :cid",
+            {"cid": cid},
+        )
         date_range = execute_query(
-            "SELECT MIN(order_date) as min_date, MAX(order_date) as max_date FROM orders"
+            "SELECT MIN(order_date) as min_date, MAX(order_date) as max_date "
+            "FROM orders WHERE company_id = :cid",
+            {"cid": cid},
         )
         categories = execute_query(
-            "SELECT category, COUNT(*) as cnt FROM orders GROUP BY category"
+            "SELECT category, COUNT(*) as cnt FROM orders "
+            "WHERE company_id = :cid GROUP BY category",
+            {"cid": cid},
         )
 
         return {
-            "total_orders": int(total["cnt"].iloc[0]),
+            "total_orders": int(total["cnt"].iloc[0]) if not total.empty else 0,
             "date_range": {
-                "min": str(date_range["min_date"].iloc[0]),
-                "max": str(date_range["max_date"].iloc[0]),
+                "min": str(date_range["min_date"].iloc[0]) if not date_range.empty else "",
+                "max": str(date_range["max_date"].iloc[0]) if not date_range.empty else "",
             },
-            "categories": categories.to_dict("records"),
+            "categories": categories.to_dict("records") if not categories.empty else [],
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Database query failed: {exc}")
@@ -300,7 +445,7 @@ async def db_stats():
 # ── RAG stats ─────────────────────────────────────────────────────────────────
 
 @app.get("/rag/stats")
-async def rag_stats():
+async def rag_stats(current_user: TokenData = Depends(get_current_user)):
     """Return ChromaDB collection statistics."""
     try:
         from src.tools.rag_tools import ReportVectorStore
@@ -310,3 +455,134 @@ async def rag_stats():
         return {"status": "ok", **stats}
     except Exception as exc:
         return {"status": "error", "error": str(exc)}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN ENDPOINTS (require admin role)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.post("/admin/upload-data")
+async def upload_data(
+    file: UploadFile = File(...),
+    company_id: int = None,
+    admin: TokenData = Depends(require_admin),
+):
+    """Upload CSV sales data for a company."""
+    from src.tools.sql_tools import get_db_engine
+
+    target_company = company_id or admin.company_id
+
+    contents = await file.read()
+    try:
+        df = pd.read_csv(io.BytesIO(contents), encoding="latin-1")
+    except Exception:
+        df = pd.read_csv(io.BytesIO(contents), encoding="utf-8")
+
+    df.columns = [c.strip().lower().replace(" ", "_").replace("-", "_") for c in df.columns]
+
+    required = {"order_id", "order_date", "sales", "quantity", "profit"}
+    missing = required - set(df.columns)
+    if missing:
+        raise HTTPException(400, f"Missing required columns: {missing}")
+
+    df["company_id"] = target_company
+
+    df["order_date"] = pd.to_datetime(df["order_date"], format="mixed").dt.date
+    if "ship_date" in df.columns:
+        df["ship_date"] = pd.to_datetime(df["ship_date"], format="mixed", errors="coerce").dt.date
+
+    engine = get_db_engine()
+    rows_before = pd.read_sql(
+        text("SELECT COUNT(*) as cnt FROM orders WHERE company_id = :cid"),
+        engine,
+        params={"cid": target_company},
+    ).iloc[0]["cnt"]
+
+    df.to_sql("orders", engine, if_exists="append", index=False)
+
+    rows_after = pd.read_sql(
+        text("SELECT COUNT(*) as cnt FROM orders WHERE company_id = :cid"),
+        engine,
+        params={"cid": target_company},
+    ).iloc[0]["cnt"]
+
+    return {
+        "message": f"Uploaded {len(df)} rows for company {target_company}",
+        "rows_before": int(rows_before),
+        "rows_after": int(rows_after),
+        "new_rows": int(rows_after - rows_before),
+    }
+
+
+@app.post("/admin/companies")
+async def create_company(
+    req: CompanyCreate,
+    admin: TokenData = Depends(require_admin),
+):
+    """Create a new company (admin only)."""
+    from src.tools.sql_tools import get_db_engine
+
+    engine = get_db_engine()
+    with engine.begin() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM companies WHERE slug = :slug"),
+            {"slug": req.slug},
+        ).fetchone()
+        if existing:
+            raise HTTPException(400, f"Company with slug '{req.slug}' already exists")
+
+        conn.execute(text("""
+            INSERT INTO companies (name, slug, email_domain)
+            VALUES (:name, :slug, :domain)
+        """), {"name": req.name, "slug": req.slug, "domain": req.email_domain})
+
+    return {"message": f"Company '{req.name}' created"}
+
+
+@app.get("/admin/companies")
+async def list_companies(admin: TokenData = Depends(require_admin)):
+    """List all companies (admin only)."""
+    from src.tools.sql_tools import get_db_engine
+
+    engine = get_db_engine()
+    df = pd.read_sql(text("SELECT * FROM companies ORDER BY id"), engine)
+    return {"companies": df.to_dict("records")}
+
+
+@app.get("/admin/users")
+async def list_users(admin: TokenData = Depends(require_admin)):
+    """List all users (admin only)."""
+    from src.tools.sql_tools import get_db_engine
+
+    engine = get_db_engine()
+    df = pd.read_sql(text("""
+        SELECT u.id, u.email, u.full_name, u.role, u.company_id,
+               c.name as company_name, u.created_at, u.is_active
+        FROM users u JOIN companies c ON u.company_id = c.id
+        ORDER BY u.id
+    """), engine)
+    return {"users": df.to_dict("records")}
+
+
+@app.post("/admin/send-report")
+async def admin_send_report(
+    req: AdminReportRequest,
+    admin: TokenData = Depends(require_admin),
+):
+    """Admin triggers report generation for any company."""
+    from src.graph.workflow import run_pipeline
+
+    state = run_pipeline(
+        start_date=str(req.start_date),
+        end_date=str(req.end_date),
+        report_type=req.report_type,
+        recipients=req.recipients,
+        company_id=req.company_id,
+    )
+
+    return {
+        "message": f"Report generated for company {req.company_id}",
+        "recipients": req.recipients,
+        "quality_score": (state.get("evaluation") or {}).get("overall_score"),
+        "delivery_status": state.get("delivery_status"),
+    }

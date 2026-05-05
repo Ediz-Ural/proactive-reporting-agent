@@ -16,6 +16,7 @@ class AgentState(TypedDict):
     end_date: str             # ISO format: "2024-01-07"
     report_type: str          # "weekly" | "monthly" | "quarterly"
     recipients: list[str]     # destination email addresses
+    company_id: int           # tenant isolation — which company's data to use
 
     # ── Data Collector output ─────────────────────────────────────────────────
     raw_data: Optional[dict]

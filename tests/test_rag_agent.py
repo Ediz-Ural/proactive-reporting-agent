@@ -174,6 +174,7 @@ class TestRAGAgent:
                 "report_date": "2024-01-21",
                 "period_start": "2024-01-15",
                 "period_end": "2024-01-21",
+                "company_id": "1",
             },
         )
         return str(tmp_path / "chroma")
@@ -184,6 +185,7 @@ class TestRAGAgent:
             "start_date": "2024-01-22",
             "end_date": "2024-01-28",
             "report_type": "weekly",
+            "company_id": 1,
             "recipients": [],
             "raw_data": None,
             "quality_report": None,
@@ -311,6 +313,7 @@ class TestRAGAgent:
                 "report_type": "monthly",
                 "period_start": "2014-12-01",
                 "period_end": "2014-12-31",
+                "company_id": "1",
             },
         )
         store.store_report(
@@ -324,6 +327,7 @@ class TestRAGAgent:
                 "report_type": "monthly",
                 "period_start": "2015-01-01",
                 "period_end": "2015-01-31",
+                "company_id": "1",
             },
         )
         store.store_report(
@@ -337,6 +341,7 @@ class TestRAGAgent:
                 "report_type": "monthly",
                 "period_start": "2017-01-01",
                 "period_end": "2017-01-31",
+                "company_id": "1",
             },
         )
 
@@ -367,6 +372,7 @@ class TestRAGAgent:
                 "report_type": "monthly",
                 "period_start": "2017-01-01",
                 "period_end": "2017-01-31",
+                "company_id": "1",
             },
         )
 

@@ -49,13 +49,19 @@ class DataCollectorAgent:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def collect(self, start_date: str | date, end_date: str | date) -> dict[str, Any]:
+    def collect(
+        self,
+        start_date: str | date,
+        end_date: str | date,
+        company_id: int = 1,
+    ) -> dict[str, Any]:
         """
         Fetch all data required for the report period.
 
         Args:
             start_date: Period start (ISO string or date object).
             end_date:   Period end (ISO string or date object).
+            company_id: Tenant company ID.
 
         Returns:
             Dict containing all collected DataFrames (as list[dict]) and
@@ -66,7 +72,7 @@ class DataCollectorAgent:
         """
         start = str(start_date)
         end = str(end_date)
-        logger.info("DataCollectorAgent: collecting data for %s → %s", start, end)
+        logger.info("DataCollectorAgent: collecting data for %s → %s (company=%d)", start, end, company_id)
 
         result: dict[str, Any] = {
             "period": {"start": start, "end": end},
@@ -76,27 +82,28 @@ class DataCollectorAgent:
 
         # Each fetch is wrapped individually so one failure doesn't block others
         result["daily_sales"] = self._fetch(
-            "daily_sales", get_sales_by_period, start, end, errors
+            "daily_sales", get_sales_by_period, start, end, company_id, errors
         )
         result["by_category"] = self._fetch(
-            "by_category", get_sales_by_category, start, end, errors
+            "by_category", get_sales_by_category, start, end, company_id, errors
         )
         result["top_products"] = self._fetch(
             "top_products",
-            lambda s, e: get_top_products(s, e, limit=self.top_products_limit),
+            lambda s, e, cid: get_top_products(s, e, limit=self.top_products_limit, company_id=cid),
             start,
             end,
+            company_id,
             errors,
         )
         result["customer_metrics"] = self._fetch(
-            "customer_metrics", get_customer_metrics, start, end, errors
+            "customer_metrics", get_customer_metrics, start, end, company_id, errors
         )
         result["region_performance"] = self._fetch(
-            "region_performance", get_region_performance, start, end, errors
+            "region_performance", get_region_performance, start, end, company_id, errors
         )
 
         try:
-            result["weekly_summary"] = get_weekly_summary(start, end)
+            result["weekly_summary"] = get_weekly_summary(start, end, company_id=company_id)
         except Exception as exc:
             logger.error("Failed to fetch weekly_summary: %s", exc)
             errors.append(f"weekly_summary: {exc}")
@@ -123,11 +130,12 @@ class DataCollectorAgent:
         fn,
         start: str,
         end: str,
+        company_id: int,
         errors: list[str],
     ) -> list[dict]:
         """Call a SQL tool function and convert the DataFrame to list[dict]."""
         try:
-            df: pd.DataFrame = fn(start, end)
+            df: pd.DataFrame = fn(start, end, company_id)
             return self._df_to_records(df)
         except Exception as exc:
             logger.error("Failed to fetch %s: %s", label, exc)

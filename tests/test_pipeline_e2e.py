@@ -44,6 +44,7 @@ def e2e_engine():
                 quantity     INTEGER NOT NULL DEFAULT 0,
                 discount     REAL    NOT NULL DEFAULT 0,
                 profit       REAL    NOT NULL DEFAULT 0,
+                company_id   INTEGER DEFAULT 1,
                 PRIMARY KEY (order_id, product_id)
             )
         """))
@@ -89,7 +90,11 @@ def e2e_engine():
                 round(rng.uniform(-50, 200), 2),
             )
             conn.execute(
-                text("""INSERT INTO orders VALUES (
+                text("""INSERT INTO orders (order_id, order_date, ship_date, ship_mode, customer_id,
+                    segment, country, city, state, region, product_id,
+                    category, sub_category, product_name,
+                    sales, quantity, discount, profit)
+                VALUES (
                     :order_id,:order_date,:ship_date,:ship_mode,:customer_id,
                     :segment,:country,:city,:state,:region,:product_id,
                     :category,:sub_category,:product_name,

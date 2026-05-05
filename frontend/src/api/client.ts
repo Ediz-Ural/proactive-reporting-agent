@@ -15,11 +15,56 @@ const api = axios.create({
   timeout: 180000, // 3 minutes for sync pipeline
 });
 
-// Health
+// JWT token interceptor
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 401 → redirect to login
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// ── Auth ────────────────────────────────────────────────────────────────────
+
+export const login = (email: string, password: string) => {
+  const formData = new URLSearchParams();
+  formData.append('username', email);
+  formData.append('password', password);
+  return api.post<{ access_token: string; token_type: string; user: Record<string, unknown> }>(
+    '/auth/login',
+    formData,
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+  );
+};
+
+export const getMe = () => api.get('/auth/me');
+
+export const logout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  window.location.href = '/login';
+};
+
+// ── Health (public) ─────────────────────────────────────────────────────────
+
 export const getHealth = () =>
   api.get<HealthStatus>('/health');
 
-// Runs
+// ── Runs ────────────────────────────────────────────────────────────────────
+
 export const getRuns = (limit = 20) =>
   api.get<{ runs: PipelineRun[]; total: number }>(`/runs?limit=${limit}`);
 
@@ -33,7 +78,8 @@ export const getLatestRun = () =>
 export const getRunDetail = (runId: string) =>
   api.get<{ run: PipelineRun }>(`/runs/${runId}`);
 
-// Reports
+// ── Reports ─────────────────────────────────────────────────────────────────
+
 export const getReports = () =>
   api.get<{ reports: ReportFile[] }>('/reports');
 
@@ -44,14 +90,16 @@ export const getReport = (filename: string) =>
     content_html: string | null;
   }>(`/reports/${filename}`);
 
-// Stats
+// ── Stats ───────────────────────────────────────────────────────────────────
+
 export const getDbStats = () =>
   api.get<DbStats>('/db/stats');
 
 export const getRagStats = () =>
   api.get<RagStats>('/rag/stats');
 
-// Pipeline
+// ── Pipeline ────────────────────────────────────────────────────────────────
+
 export const runPipeline = (data: {
   start_date: string;
   end_date: string;
@@ -68,5 +116,32 @@ export const runPipelineAsync = (data: {
 
 export const runMonthly = () =>
   api.post<{ run_id: string; status: string; message: string }>('/run/monthly');
+
+// ── Admin ───────────────────────────────────────────────────────────────────
+
+export const getCompanies = () =>
+  api.get<{ companies: Array<Record<string, unknown>> }>('/admin/companies');
+
+export const createCompany = (data: { name: string; slug: string; email_domain?: string }) =>
+  api.post('/admin/companies', data);
+
+export const getUsers = () =>
+  api.get<{ users: Array<Record<string, unknown>> }>('/admin/users');
+
+export const registerUser = (data: {
+  email: string;
+  password: string;
+  full_name: string;
+  company_id: number;
+}) => api.post('/auth/register', data);
+
+export const uploadData = (file: File, companyId?: number) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  const params = companyId ? `?company_id=${companyId}` : '';
+  return api.post(`/admin/upload-data${params}`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
 
 export default api;

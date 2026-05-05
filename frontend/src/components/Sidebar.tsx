@@ -4,16 +4,36 @@ import {
   Play,
   FileText,
   Settings,
+  Upload,
+  Building2,
+  Users,
+  LogOut,
 } from 'lucide-react';
 
-const links = [
+const baseLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/pipeline', label: 'Pipeline', icon: Play },
   { to: '/reports', label: 'Raporlar', icon: FileText },
   { to: '/settings', label: 'Ayarlar', icon: Settings },
 ];
 
+const adminLinks = [
+  { to: '/admin/upload', label: 'Veri Yukle', icon: Upload },
+  { to: '/admin/companies', label: 'Sirketler', icon: Building2 },
+  { to: '/admin/users', label: 'Kullanicilar', icon: Users },
+];
+
 export default function Sidebar() {
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isAdmin = user.role === 'admin';
+  const links = isAdmin ? [...baseLinks, ...adminLinks] : baseLinks;
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+  };
+
   return (
     <aside className="w-56 bg-gray-900 text-gray-300 flex flex-col shrink-0">
       <div className="px-4 py-5 border-b border-gray-800">
@@ -23,7 +43,7 @@ export default function Sidebar() {
         <p className="text-xs text-gray-500 mt-0.5">Multi-Agent System</p>
       </div>
       <nav className="flex-1 py-3 space-y-0.5 px-2">
-        {links.map(({ to, label, icon: Icon }) => (
+        {baseLinks.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -40,9 +60,46 @@ export default function Sidebar() {
             {label}
           </NavLink>
         ))}
+
+        {isAdmin && (
+          <>
+            <div className="pt-3 pb-1 px-3">
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Admin</p>
+            </div>
+            {adminLinks.map(({ to, label, icon: Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                    isActive
+                      ? 'bg-blue-600 text-white'
+                      : 'hover:bg-gray-800 hover:text-white'
+                  }`
+                }
+              >
+                <Icon size={18} />
+                {label}
+              </NavLink>
+            ))}
+          </>
+        )}
       </nav>
-      <div className="px-4 py-3 border-t border-gray-800 text-xs text-gray-600">
-        v0.6.0
+
+      <div className="px-4 py-3 border-t border-gray-800">
+        <p className="text-sm text-gray-300 truncate">{user.full_name || 'User'}</p>
+        <p className="text-xs text-gray-500 truncate">{user.company_name || ''}</p>
+        <p className="text-xs text-gray-600 mb-2">{user.role || ''}</p>
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-1.5 text-sm text-red-400 hover:text-red-300 transition-colors"
+        >
+          <LogOut size={14} />
+          Logout
+        </button>
+      </div>
+      <div className="px-4 py-2 border-t border-gray-800 text-xs text-gray-600">
+        v0.7.0
       </div>
     </aside>
   );

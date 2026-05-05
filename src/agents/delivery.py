@@ -43,6 +43,7 @@ class DeliveryAgent:
         recipients = state.get("recipients") or []
         start_date = state.get("start_date", "")
         end_date = state.get("end_date", "")
+        company_id = state.get("company_id", 1)
 
         logger.info("DeliveryAgent: preparing delivery (recipients=%d)", len(recipients))
 
@@ -51,7 +52,7 @@ class DeliveryAgent:
 
         # 1. Always save to files as backup
         try:
-            fallback = self._save_fallback(final_report, start_date, end_date)
+            fallback = self._save_fallback(final_report, start_date, end_date, company_id)
             result["channels"]["file"] = {"success": True, **fallback}
         except Exception as exc:
             logger.error("DeliveryAgent: file save failed: %s", exc)
@@ -239,12 +240,16 @@ class DeliveryAgent:
 
     # ── File fallback ────────────────────────────────────────────────────────
 
-    def _save_fallback(self, report_content: str, start_date: str, end_date: str) -> dict:
+    def _save_fallback(
+        self, report_content: str, start_date: str, end_date: str, company_id: int = 1,
+    ) -> dict:
         """Save report to file when SMTP is unavailable."""
         from src.tools.report_tools import render_report, save_report_to_file
 
+        output_dir = f"data/reports/{company_id}"
+
         # Save markdown version
-        md_path = save_report_to_file(report_content, format="md")
+        md_path = save_report_to_file(report_content, output_dir=output_dir, format="md")
 
         # Save HTML version
         html_content = render_report(
@@ -254,7 +259,7 @@ class DeliveryAgent:
                 "period": f"{start_date} — {end_date}",
             },
         )
-        html_path = save_report_to_file(html_content, format="html")
+        html_path = save_report_to_file(html_content, output_dir=output_dir, format="html")
 
         return {
             "saved_files": [md_path, html_path],

@@ -188,6 +188,36 @@ REQUIRED_COLS = [
     "sales", "quantity", "discount", "profit",
 ]
 
+COMPANIES_DDL = """
+CREATE TABLE IF NOT EXISTS companies (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            VARCHAR(200) NOT NULL UNIQUE,
+    slug            VARCHAR(100) NOT NULL UNIQUE,
+    email_domain    VARCHAR(200),
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_active       BOOLEAN DEFAULT 1
+)
+"""
+
+USERS_DDL = """
+CREATE TABLE IF NOT EXISTS users (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    email           VARCHAR(200) NOT NULL UNIQUE,
+    password_hash   VARCHAR(200) NOT NULL,
+    full_name       VARCHAR(200) NOT NULL,
+    role            VARCHAR(20) NOT NULL DEFAULT 'user',
+    company_id      INTEGER NOT NULL,
+    created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    is_active       BOOLEAN DEFAULT 1,
+    FOREIGN KEY (company_id) REFERENCES companies(id)
+)
+"""
+
+USERS_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)",
+    "CREATE INDEX IF NOT EXISTS idx_users_company ON users(company_id)",
+]
+
 DDL = """
 CREATE TABLE IF NOT EXISTS orders (
     order_id        VARCHAR(30)     NOT NULL,
@@ -210,6 +240,7 @@ CREATE TABLE IF NOT EXISTS orders (
     quantity        INT             NOT NULL DEFAULT 0,
     discount        DECIMAL(5, 2)   NOT NULL DEFAULT 0,
     profit          DECIMAL(12, 2)  NOT NULL DEFAULT 0,
+    company_id      INTEGER         DEFAULT 1,
     PRIMARY KEY (order_id, product_id)
 )
 """
@@ -222,6 +253,7 @@ def _get_index_statements(db_type: str) -> list[str]:
         ("idx_customer", "orders", "customer_id"),
         ("idx_region", "orders", "region"),
         ("idx_segment", "orders", "segment"),
+        ("idx_orders_company", "orders", "company_id"),
     ]
     if db_type == "mysql":
         # MySQL: CREATE INDEX ... ON ... — drop first if exists
@@ -245,7 +277,45 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_customer      ON orders(customer_id)",
     "CREATE INDEX IF NOT EXISTS idx_region        ON orders(region)",
     "CREATE INDEX IF NOT EXISTS idx_segment       ON orders(segment)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_company ON orders(company_id)",
 ]
+
+
+def seed_default_company_and_admin(engine) -> None:
+    """Create default company and admin user for development."""
+    from passlib.hash import bcrypt
+
+    with engine.begin() as conn:
+        conn.execute(text("""
+            INSERT OR IGNORE INTO companies (id, name, slug, email_domain)
+            VALUES (1, 'Superstore Inc.', 'superstore', 'superstore.com')
+        """))
+
+        password_hash = bcrypt.hash("admin123")
+        conn.execute(text("""
+            INSERT OR IGNORE INTO users (email, password_hash, full_name, role, company_id)
+            VALUES (:email, :hash, :name, :role, :company_id)
+        """), {
+            "email": "admin@superstore.com",
+            "hash": password_hash,
+            "name": "Admin User",
+            "role": "admin",
+            "company_id": 1,
+        })
+
+        password_hash = bcrypt.hash("user123")
+        conn.execute(text("""
+            INSERT OR IGNORE INTO users (email, password_hash, full_name, role, company_id)
+            VALUES (:email, :hash, :name, :role, :company_id)
+        """), {
+            "email": "user@superstore.com",
+            "hash": password_hash,
+            "name": "Demo User",
+            "role": "user",
+            "company_id": 1,
+        })
+
+    logger.info("Default company and users seeded.")
 
 
 def seed_database(df: pd.DataFrame) -> None:
@@ -272,6 +342,9 @@ def seed_database(df: pd.DataFrame) -> None:
     df["discount"] = pd.to_numeric(df["discount"], errors="coerce").fillna(0).round(2)
     df["profit"] = pd.to_numeric(df["profit"], errors="coerce").fillna(0).round(2)
 
+    # Add company_id column (default company 1)
+    df["company_id"] = 1
+
     # Drop duplicates on PK columns
     before = len(df)
     df = df.drop_duplicates(subset=["order_id", "product_id"])
@@ -280,6 +353,14 @@ def seed_database(df: pd.DataFrame) -> None:
 
     engine = get_db_engine()
     with engine.connect() as conn:
+        # Create auth tables first (companies referenced by orders FK)
+        conn.execute(text(COMPANIES_DDL))
+        conn.execute(text(USERS_DDL))
+        for idx_sql in USERS_INDEXES:
+            try:
+                conn.execute(text(idx_sql))
+            except Exception:
+                pass
         conn.execute(text(DDL))
         index_stmts = _get_index_statements(settings.DB_TYPE)
         for idx_sql in index_stmts:
@@ -291,6 +372,13 @@ def seed_database(df: pd.DataFrame) -> None:
 
     df.to_sql("orders", engine, if_exists="replace", index=False, chunksize=500)
     logger.info("Inserted %d rows into 'orders' table", len(df))
+
+    # Set company_id for any rows that might be NULL
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE orders SET company_id = 1 WHERE company_id IS NULL"))
+
+    # Seed default company and admin user
+    seed_default_company_and_admin(engine)
 
     with engine.connect() as conn:
         row_count = conn.execute(text("SELECT COUNT(*) FROM orders")).scalar()

@@ -52,7 +52,8 @@ def data_collector_node(state: AgentState) -> dict:
     from src.agents.data_collector import DataCollectorAgent
 
     agent = DataCollectorAgent()
-    result = agent.collect(state["start_date"], state["end_date"])
+    company_id = state.get("company_id", 1)
+    result = agent.collect(state["start_date"], state["end_date"], company_id=company_id)
     return {"raw_data": result, "current_agent": "data_collector"}
 
 
@@ -176,6 +177,7 @@ def run_pipeline(
     end_date: str,
     report_type: str = "weekly",
     recipients: list[str] | None = None,
+    company_id: int = 1,
 ) -> AgentState:
     """
     Execute the full reporting pipeline.
@@ -185,6 +187,7 @@ def run_pipeline(
         end_date:   ISO date string, e.g. "2024-01-07".
         report_type: "weekly" | "monthly" | "quarterly".
         recipients: List of email addresses.
+        company_id: Tenant company ID.
 
     Returns:
         Final AgentState after all nodes have executed.
@@ -196,6 +199,7 @@ def run_pipeline(
         "end_date": end_date,
         "report_type": report_type,
         "recipients": recipients or [],
+        "company_id": company_id,
         "raw_data": None,
         "quality_report": None,
         "analysis_results": None,
@@ -232,6 +236,7 @@ def run_pipeline_with_retry(
     end_date: str,
     report_type: str = "weekly",
     recipients: list[str] | None = None,
+    company_id: int = 1,
     max_retries: int = 2,
 ) -> AgentState:
     """
@@ -261,6 +266,7 @@ def run_pipeline_with_retry(
                 end_date=end_date,
                 report_type=report_type,
                 recipients=recipients,
+                company_id=company_id,
             )
             return state
         except Exception as exc:

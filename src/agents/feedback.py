@@ -49,6 +49,7 @@ class FeedbackAgent:
             "timestamp": datetime.utcnow().isoformat(),
             "report_type": state.get("report_type", ""),
             "period": f"{state.get('start_date', '')} to {state.get('end_date', '')}",
+            "company_id": state.get("company_id", 1),
             "quality_score": evaluation.get("overall_score", 0),
             "evaluator_iterations": state.get("evaluator_iteration", 0),
             "approved_on_first_try": state.get("evaluator_iteration", 0) <= 1,
@@ -138,6 +139,7 @@ class FeedbackAgent:
                 "source": "pipeline",
                 "quality_score": str(quality_score),
                 "evaluator_approved": str(evaluation.get("approved", False)),
+                "company_id": str(state.get("company_id", 1)),
             }
 
             store = ReportVectorStore()

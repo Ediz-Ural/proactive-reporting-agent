@@ -61,21 +61,27 @@ class RAGAgent:
         start_date = state.get("start_date", "")
         end_date = state.get("end_date", "")
         report_type = state.get("report_type", "weekly")
+        company_id = state.get("company_id", 1)
 
         queries = self._build_queries(analysis_results, start_date, end_date, report_type)
 
-        # Temporal filter: only pull reports generated BEFORE current period start.
-        # ChromaDB's $lt only accepts numeric operands, so we filter on the numeric
-        # period_end_ts field (YYYYMMDD int, auto-computed in store_report).
+        # Build where filter: temporal + company isolation
         where_filter: dict[str, Any] | None = None
+        conditions = [{"company_id": {"$eq": str(company_id)}}]
+
         if start_date:
             start_ts = int(start_date.replace("-", "")) if start_date else None
             if start_ts is not None:
-                where_filter = {"period_end_ts": {"$lt": start_ts}}
+                conditions.append({"period_end_ts": {"$lt": start_ts}})
                 logger.info(
                     "RAGAgent: applying temporal filter — period_end_ts < %d",
                     start_ts,
                 )
+
+        if len(conditions) > 1:
+            where_filter = {"$and": conditions}
+        elif conditions:
+            where_filter = conditions[0]
 
         # Execute all queries and collect unique chunks
         seen_ids: set[str] = set()

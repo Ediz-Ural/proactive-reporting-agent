@@ -46,6 +46,11 @@ dependencies = [
     "pydantic-settings>=2.5",
     "python-dotenv>=1.0",
 
+    # Auth
+    "python-jose[cryptography]>=3.3",
+    "passlib[bcrypt]>=1.7",
+    "python-multipart>=0.0.9",
+
     # Messaging
     "twilio>=9.0",
 ]

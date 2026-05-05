@@ -102,13 +102,18 @@ def execute_query(query: str, params: dict | None = None) -> pd.DataFrame:
 
 # ── Domain queries ─────────────────────────────────────────────────────────────
 
-def get_sales_by_period(start_date: str | date, end_date: str | date) -> pd.DataFrame:
+def get_sales_by_period(
+    start_date: str | date,
+    end_date: str | date,
+    company_id: int = 1,
+) -> pd.DataFrame:
     """
     Return daily aggregated sales for the given date range.
 
     Args:
         start_date: First day of the period (inclusive).
         end_date:   Last day of the period (inclusive).
+        company_id: Tenant company ID.
 
     Returns:
         DataFrame with columns: [order_date, total_sales, total_profit,
@@ -123,22 +128,32 @@ def get_sales_by_period(start_date: str | date, end_date: str | date) -> pd.Data
             SUM(quantity)           AS total_quantity
         FROM orders
         WHERE order_date BETWEEN :start_date AND :end_date
+          AND company_id = :company_id
         GROUP BY order_date
         ORDER BY order_date
     """
-    df = execute_query(query, {"start_date": str(start_date), "end_date": str(end_date)})
+    df = execute_query(query, {
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "company_id": company_id,
+    })
     if not df.empty:
         df["order_date"] = pd.to_datetime(df["order_date"])
     return df
 
 
-def get_sales_by_category(start_date: str | date, end_date: str | date) -> pd.DataFrame:
+def get_sales_by_category(
+    start_date: str | date,
+    end_date: str | date,
+    company_id: int = 1,
+) -> pd.DataFrame:
     """
     Return aggregated sales broken down by category and sub-category.
 
     Args:
         start_date: First day of the period (inclusive).
         end_date:   Last day of the period (inclusive).
+        company_id: Tenant company ID.
 
     Returns:
         DataFrame with columns: [category, sub_category, total_sales,
@@ -155,16 +170,22 @@ def get_sales_by_category(start_date: str | date, end_date: str | date) -> pd.Da
             ROUND(AVG(discount), 3)                            AS avg_discount
         FROM orders
         WHERE order_date BETWEEN :start_date AND :end_date
+          AND company_id = :company_id
         GROUP BY category, sub_category
         ORDER BY total_sales DESC
     """
-    return execute_query(query, {"start_date": str(start_date), "end_date": str(end_date)})
+    return execute_query(query, {
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "company_id": company_id,
+    })
 
 
 def get_top_products(
     start_date: str | date,
     end_date: str | date,
     limit: int = 10,
+    company_id: int = 1,
 ) -> pd.DataFrame:
     """
     Return the top-selling products by revenue.
@@ -173,6 +194,7 @@ def get_top_products(
         start_date: First day of the period (inclusive).
         end_date:   Last day of the period (inclusive).
         limit:      Number of top products to return.
+        company_id: Tenant company ID.
 
     Returns:
         DataFrame with columns: [product_id, product_name, category,
@@ -190,23 +212,34 @@ def get_top_products(
             COUNT(DISTINCT order_id) AS order_count
         FROM orders
         WHERE order_date BETWEEN :start_date AND :end_date
+          AND company_id = :company_id
         GROUP BY product_id, product_name, category, sub_category
         ORDER BY total_sales DESC
         LIMIT :limit
     """
     return execute_query(
         query,
-        {"start_date": str(start_date), "end_date": str(end_date), "limit": limit},
+        {
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "limit": limit,
+            "company_id": company_id,
+        },
     )
 
 
-def get_customer_metrics(start_date: str | date, end_date: str | date) -> pd.DataFrame:
+def get_customer_metrics(
+    start_date: str | date,
+    end_date: str | date,
+    company_id: int = 1,
+) -> pd.DataFrame:
     """
     Return per-segment and per-customer aggregated metrics.
 
     Args:
         start_date: First day of the period (inclusive).
         end_date:   Last day of the period (inclusive).
+        company_id: Tenant company ID.
 
     Returns:
         DataFrame with columns: [segment, unique_customers, total_orders,
@@ -222,19 +255,29 @@ def get_customer_metrics(start_date: str | date, end_date: str | date) -> pd.Dat
             ROUND(SUM(sales) / NULLIF(COUNT(DISTINCT customer_id), 0), 2) AS avg_revenue_per_customer
         FROM orders
         WHERE order_date BETWEEN :start_date AND :end_date
+          AND company_id = :company_id
         GROUP BY segment
         ORDER BY total_revenue DESC
     """
-    return execute_query(query, {"start_date": str(start_date), "end_date": str(end_date)})
+    return execute_query(query, {
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "company_id": company_id,
+    })
 
 
-def get_weekly_summary(start_date: str | date, end_date: str | date) -> dict:
+def get_weekly_summary(
+    start_date: str | date,
+    end_date: str | date,
+    company_id: int = 1,
+) -> dict:
     """
     Return a single-dict summary of the key KPIs for the period.
 
     Args:
         start_date: First day of the period (inclusive).
         end_date:   Last day of the period (inclusive).
+        company_id: Tenant company ID.
 
     Returns:
         Dict with keys: period, total_revenue, total_profit,
@@ -251,19 +294,29 @@ def get_weekly_summary(start_date: str | date, end_date: str | date) -> dict:
             ROUND(SUM(sales) / NULLIF(COUNT(DISTINCT order_id), 0), 2) AS avg_order_value
         FROM orders
         WHERE order_date BETWEEN :start_date AND :end_date
+          AND company_id = :company_id
     """
-    df = execute_query(query, {"start_date": str(start_date), "end_date": str(end_date)})
+    df = execute_query(query, {
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "company_id": company_id,
+    })
 
     # Best-selling category
     cat_query = """
         SELECT category, SUM(sales) AS cat_sales
         FROM orders
         WHERE order_date BETWEEN :start_date AND :end_date
+          AND company_id = :company_id
         GROUP BY category
         ORDER BY cat_sales DESC
         LIMIT 1
     """
-    cat_df = execute_query(cat_query, {"start_date": str(start_date), "end_date": str(end_date)})
+    cat_df = execute_query(cat_query, {
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "company_id": company_id,
+    })
     top_category = cat_df["category"].iloc[0] if not cat_df.empty else "N/A"
 
     row = df.iloc[0] if not df.empty else {}
@@ -283,13 +336,18 @@ def get_weekly_summary(start_date: str | date, end_date: str | date) -> dict:
     }
 
 
-def get_region_performance(start_date: str | date, end_date: str | date) -> pd.DataFrame:
+def get_region_performance(
+    start_date: str | date,
+    end_date: str | date,
+    company_id: int = 1,
+) -> pd.DataFrame:
     """
     Return sales and profit aggregated by region.
 
     Args:
         start_date: First day of the period (inclusive).
         end_date:   Last day of the period (inclusive).
+        company_id: Tenant company ID.
 
     Returns:
         DataFrame with columns: [region, total_sales, total_profit, order_count].
@@ -302,7 +360,12 @@ def get_region_performance(start_date: str | date, end_date: str | date) -> pd.D
             COUNT(DISTINCT order_id) AS order_count
         FROM orders
         WHERE order_date BETWEEN :start_date AND :end_date
+          AND company_id = :company_id
         GROUP BY region
         ORDER BY total_sales DESC
     """
-    return execute_query(query, {"start_date": str(start_date), "end_date": str(end_date)})
+    return execute_query(query, {
+        "start_date": str(start_date),
+        "end_date": str(end_date),
+        "company_id": company_id,
+    })
