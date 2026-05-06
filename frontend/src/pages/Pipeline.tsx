@@ -1,19 +1,33 @@
-import { useState } from 'react';
-import { Play, Calendar } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Play, Calendar, Building2 } from 'lucide-react';
 import PipelineProgress from '../components/PipelineProgress';
 import ReportViewer from '../components/ReportViewer';
 import { EvaluatorRadar } from '../components/AnalysisCharts';
-import { runPipeline, runMonthly } from '../api/client';
+import { runPipeline, runMonthly, getCompanies } from '../api/client';
 import type { PipelineResult } from '../types';
 
 export default function Pipeline() {
   const [startDate, setStartDate] = useState('2017-01-01');
   const [endDate, setEndDate] = useState('2017-01-31');
   const [reportType, setReportType] = useState('monthly');
+  const [companyId, setCompanyId] = useState<number>(1);
+  const [companies, setCompanies] = useState<Array<{ id: number; name: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
+
+  useEffect(() => {
+    async function loadCompanies() {
+      try {
+        const res = await getCompanies();
+        setCompanies(res.data.companies as Array<{ id: number; name: string }>);
+      } catch {
+        // ignore
+      }
+    }
+    loadCompanies();
+  }, []);
 
   async function handleRun() {
     setLoading(true);
@@ -26,6 +40,7 @@ export default function Pipeline() {
         start_date: startDate,
         end_date: endDate,
         report_type: reportType,
+        company_id: companyId,
       });
       setResult(res.data);
       setPipelineStatus('completed');
@@ -55,6 +70,8 @@ export default function Pipeline() {
     }
   }
 
+  const selectedCompanyName = companies.find(c => c.id === companyId)?.name || '';
+
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-900">Pipeline</h2>
@@ -62,7 +79,22 @@ export default function Pipeline() {
       {/* Input Form */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Rapor Uret</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">
+              <Building2 size={12} className="inline mr-1" />
+              Sirket
+            </label>
+            <select
+              value={companyId}
+              onChange={(e) => setCompanyId(Number(e.target.value))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Baslangic Tarihi</label>
             <input
@@ -94,7 +126,7 @@ export default function Pipeline() {
             </select>
           </div>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-3">
           <button
             onClick={handleRun}
             disabled={loading}
@@ -111,6 +143,11 @@ export default function Pipeline() {
             <Calendar size={16} />
             Aylik Rapor Uret
           </button>
+          {selectedCompanyName && (
+            <span className="text-xs text-gray-400">
+              {selectedCompanyName} icin rapor uretilecek
+            </span>
+          )}
         </div>
       </div>
 

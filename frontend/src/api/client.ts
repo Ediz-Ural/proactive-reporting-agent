@@ -105,6 +105,7 @@ export const runPipeline = (data: {
   end_date: string;
   report_type: string;
   recipients?: string[];
+  company_id?: number;
 }) => api.post<PipelineResult>('/run/sync', data);
 
 export const runPipelineAsync = (data: {
@@ -112,12 +113,38 @@ export const runPipelineAsync = (data: {
   end_date: string;
   report_type: string;
   recipients?: string[];
+  company_id?: number;
 }) => api.post<{ run_id: string; status: string; message: string }>('/run', data);
 
 export const runMonthly = () =>
   api.post<{ run_id: string; status: string; message: string }>('/run/monthly');
 
 // ── Admin ───────────────────────────────────────────────────────────────────
+
+export interface CompanyStat {
+  company_id: number;
+  company_name: string;
+  total_orders: number;
+  unique_customers: number;
+  total_revenue: number;
+  total_profit: number;
+  profit_margin_pct: number;
+  avg_order_value: number;
+  avg_discount: number;
+}
+
+export interface CompanyStatsResponse {
+  companies: CompanyStat[];
+  totals: {
+    total_orders: number;
+    total_revenue: number;
+    total_profit: number;
+    total_customers: number;
+  };
+}
+
+export const getCompanyStats = () =>
+  api.get<CompanyStatsResponse>('/admin/company-stats');
 
 export const getCompanies = () =>
   api.get<{ companies: Array<Record<string, unknown>> }>('/admin/companies');

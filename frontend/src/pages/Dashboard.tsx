@@ -3,12 +3,12 @@ import { Link } from 'react-router-dom';
 import {
   DollarSign, TrendingUp, ShoppingCart, Users,
   CheckCircle, XCircle, Database, Brain, Clock,
-  FileText, Eye,
+  FileText, Eye, ArrowUp, ArrowDown, Building2,
 } from 'lucide-react';
-import KPICard from '../components/KPICard';
 import StatusBadge from '../components/StatusBadge';
 import ReportViewer from '../components/ReportViewer';
-import { getHealth, getLatestRun, getRuns, getDbStats, getRagStats, getReports, getReport } from '../api/client';
+import { getHealth, getLatestRun, getRuns, getDbStats, getRagStats, getReports, getReport, getCompanyStats } from '../api/client';
+import type { CompanyStat } from '../api/client';
 import type { HealthStatus, PipelineRun, RagStats, ReportFile } from '../types';
 
 function UserDashboard() {
@@ -171,20 +171,34 @@ function AdminDashboard() {
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [dbTotal, setDbTotal] = useState<number>(0);
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
+  const [companyStats, setCompanyStats] = useState<CompanyStat[]>([]);
+  const [totals, setTotals] = useState<{
+    total_orders: number;
+    total_revenue: number;
+    total_profit: number;
+    total_customers: number;
+  } | null>(null);
+  const [sortField, setSortField] = useState<keyof CompanyStat>('total_revenue');
+  const [sortAsc, setSortAsc] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [healthRes, runsRes, ragRes] = await Promise.allSettled([
+        const [healthRes, runsRes, ragRes, csRes] = await Promise.allSettled([
           getHealth(),
           getRuns(10),
           getRagStats(),
+          getCompanyStats(),
         ]);
 
         if (healthRes.status === 'fulfilled') setHealth(healthRes.value.data);
         if (runsRes.status === 'fulfilled') setRuns(runsRes.value.data.runs);
         if (ragRes.status === 'fulfilled') setRagStats(ragRes.value.data);
+        if (csRes.status === 'fulfilled') {
+          setCompanyStats(csRes.value.data.companies);
+          setTotals(csRes.value.data.totals);
+        }
 
         try {
           const latestRes = await getLatestRun();
@@ -214,21 +228,36 @@ function AdminDashboard() {
     );
   }
 
-  const summary = latestRun?.run.weekly_summary;
-  const comparison = latestRun?.run.period_comparison;
+  const formatCurrency = (v: number): string =>
+    '$' + v.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
-  const formatCurrency = (v: number | undefined): string => {
-    if (v === undefined || v === null) return '-';
-    return new Intl.NumberFormat('tr-TR', {
-      style: 'currency',
-      currency: 'TRY',
-      maximumFractionDigits: 0,
-    }).format(v);
+  const formatNumber = (v: number): string =>
+    v.toLocaleString('en-US');
+
+  const handleSort = (field: keyof CompanyStat) => {
+    if (sortField === field) {
+      setSortAsc(!sortAsc);
+    } else {
+      setSortField(field);
+      setSortAsc(false);
+    }
   };
 
-  const formatNumber = (v: number | undefined): string => {
-    if (v === undefined || v === null) return '-';
-    return new Intl.NumberFormat('tr-TR').format(v);
+  const sorted = [...companyStats].sort((a, b) => {
+    const av = a[sortField];
+    const bv = b[sortField];
+    if (typeof av === 'number' && typeof bv === 'number') {
+      return sortAsc ? av - bv : bv - av;
+    }
+    return String(av).localeCompare(String(bv)) * (sortAsc ? 1 : -1);
+  });
+
+  const maxRevenue = Math.max(...companyStats.map((c) => c.total_revenue), 1);
+  const maxProfit = Math.max(...companyStats.map((c) => Math.abs(c.total_profit)), 1);
+
+  const SortIcon = ({ field }: { field: keyof CompanyStat }) => {
+    if (sortField !== field) return null;
+    return sortAsc ? <ArrowUp size={12} className="inline ml-0.5" /> : <ArrowDown size={12} className="inline ml-0.5" />;
   };
 
   return (
@@ -241,36 +270,178 @@ function AdminDashboard() {
         />
       </div>
 
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard
-          title="Toplam Gelir"
-          value={formatCurrency(summary?.total_revenue)}
-          icon={DollarSign}
-          change={comparison?.total_sales_change_pct}
-        />
-        <KPICard
-          title="Toplam Kar"
-          value={formatCurrency(summary?.total_profit)}
-          icon={TrendingUp}
-          change={comparison?.total_profit_change_pct}
-        />
-        <KPICard
-          title="Siparis Sayisi"
-          value={formatNumber(summary?.total_orders)}
-          icon={ShoppingCart}
-          change={comparison?.total_orders_change_pct}
-        />
-        <KPICard
-          title="Musteri Sayisi"
-          value={formatNumber(summary?.unique_customers)}
-          icon={Users}
-        />
-      </div>
+      {/* Totals Summary */}
+      {totals && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <DollarSign size={14} className="text-blue-500" />
+              <span className="text-xs text-gray-500">Toplam Gelir</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(totals.total_revenue)}</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingUp size={14} className="text-green-500" />
+              <span className="text-xs text-gray-500">Toplam Kar</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900">{formatCurrency(totals.total_profit)}</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <ShoppingCart size={14} className="text-purple-500" />
+              <span className="text-xs text-gray-500">Toplam Siparis</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900">{formatNumber(totals.total_orders)}</p>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Users size={14} className="text-orange-500" />
+              <span className="text-xs text-gray-500">Toplam Musteri</span>
+            </div>
+            <p className="text-lg font-bold text-gray-900">{formatNumber(totals.total_customers)}</p>
+          </div>
+        </div>
+      )}
 
-      {!latestRun && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-sm text-blue-700">
-          Henuz rapor uretilmemis. Ilk raporu uretmek icin Pipeline sayfasina gidin.
+      {/* Company Comparison Table */}
+      {companyStats.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <Building2 size={16} className="text-gray-400" />
+            Sirket Karsilastirmasi
+            <span className="text-xs font-normal text-gray-400">({companyStats.length} sirket)</span>
+          </h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="text-left py-2.5 px-3 text-gray-500 font-medium">#</th>
+                  <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Sirket</th>
+                  <th
+                    className="text-right py-2.5 px-3 text-gray-500 font-medium cursor-pointer hover:text-gray-800 select-none"
+                    onClick={() => handleSort('total_revenue')}
+                  >
+                    Gelir <SortIcon field="total_revenue" />
+                  </th>
+                  <th
+                    className="text-right py-2.5 px-3 text-gray-500 font-medium cursor-pointer hover:text-gray-800 select-none"
+                    onClick={() => handleSort('total_profit')}
+                  >
+                    Kar <SortIcon field="total_profit" />
+                  </th>
+                  <th
+                    className="text-right py-2.5 px-3 text-gray-500 font-medium cursor-pointer hover:text-gray-800 select-none"
+                    onClick={() => handleSort('profit_margin_pct')}
+                  >
+                    Marj % <SortIcon field="profit_margin_pct" />
+                  </th>
+                  <th
+                    className="text-right py-2.5 px-3 text-gray-500 font-medium cursor-pointer hover:text-gray-800 select-none"
+                    onClick={() => handleSort('total_orders')}
+                  >
+                    Siparis <SortIcon field="total_orders" />
+                  </th>
+                  <th
+                    className="text-right py-2.5 px-3 text-gray-500 font-medium cursor-pointer hover:text-gray-800 select-none"
+                    onClick={() => handleSort('unique_customers')}
+                  >
+                    Musteri <SortIcon field="unique_customers" />
+                  </th>
+                  <th
+                    className="text-right py-2.5 px-3 text-gray-500 font-medium cursor-pointer hover:text-gray-800 select-none"
+                    onClick={() => handleSort('avg_order_value')}
+                  >
+                    Ort. Siparis <SortIcon field="avg_order_value" />
+                  </th>
+                  <th className="text-left py-2.5 px-3 text-gray-500 font-medium w-36">Gelir Payi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((c, i) => (
+                  <tr key={c.company_id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="py-2.5 px-3 text-gray-400 text-xs">{i + 1}</td>
+                    <td className="py-2.5 px-3 font-medium text-gray-800">{c.company_name}</td>
+                    <td className="py-2.5 px-3 text-right font-medium">{formatCurrency(c.total_revenue)}</td>
+                    <td className={`py-2.5 px-3 text-right font-medium ${c.total_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(c.total_profit)}
+                    </td>
+                    <td className={`py-2.5 px-3 text-right ${c.profit_margin_pct >= 10 ? 'text-green-600' : c.profit_margin_pct >= 0 ? 'text-yellow-600' : 'text-red-600'}`}>
+                      {c.profit_margin_pct.toFixed(1)}%
+                    </td>
+                    <td className="py-2.5 px-3 text-right">{formatNumber(c.total_orders)}</td>
+                    <td className="py-2.5 px-3 text-right">{formatNumber(c.unique_customers)}</td>
+                    <td className="py-2.5 px-3 text-right">${c.avg_order_value.toFixed(0)}</td>
+                    <td className="py-2.5 px-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-blue-500 rounded-full"
+                            style={{ width: `${(c.total_revenue / maxRevenue) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-400 w-10 text-right">
+                          {totals ? ((c.total_revenue / totals.total_revenue) * 100).toFixed(1) : 0}%
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Profit Margin Ranking - Visual Bar Chart */}
+      {companyStats.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Kar Performansi</h3>
+          <div className="space-y-2">
+            {[...companyStats]
+              .sort((a, b) => b.total_profit - a.total_profit)
+              .map((c) => (
+                <div key={c.company_id} className="flex items-center gap-3">
+                  <span className="text-xs text-gray-600 w-40 truncate">{c.company_name}</span>
+                  <div className="flex-1 flex items-center">
+                    {c.total_profit >= 0 ? (
+                      <div className="w-1/2 flex justify-end pr-1">
+                        <div className="h-4" />
+                      </div>
+                    ) : (
+                      <div className="w-1/2 flex justify-end pr-1">
+                        <div
+                          className="h-4 bg-red-400 rounded-l"
+                          style={{ width: `${(Math.abs(c.total_profit) / maxProfit) * 100}%` }}
+                        />
+                      </div>
+                    )}
+                    {c.total_profit >= 0 ? (
+                      <div className="w-1/2 pl-1">
+                        <div
+                          className="h-4 bg-green-400 rounded-r"
+                          style={{ width: `${(c.total_profit / maxProfit) * 100}%` }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-1/2 pl-1">
+                        <div className="h-4" />
+                      </div>
+                    )}
+                  </div>
+                  <span className={`text-xs font-medium w-20 text-right ${c.total_profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(c.total_profit)}
+                  </span>
+                </div>
+              ))}
+            <div className="flex items-center gap-3 mt-1">
+              <span className="w-40" />
+              <div className="flex-1 border-t border-gray-200 relative">
+                <span className="absolute left-1/2 -translate-x-1/2 -top-2.5 text-[10px] text-gray-400 bg-white px-1">$0</span>
+              </div>
+              <span className="w-20" />
+            </div>
+          </div>
         </div>
       )}
 

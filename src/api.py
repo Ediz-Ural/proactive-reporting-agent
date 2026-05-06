@@ -63,6 +63,7 @@ class PipelineRequest(BaseModel):
     end_date: str  # "2024-01-31"
     report_type: str = "weekly"
     recipients: list[str] = []
+    company_id: int | None = None  # admin can override
 
 
 class PipelineResponse(BaseModel):
@@ -207,6 +208,8 @@ async def run_pipeline_endpoint(
     from src.graph.workflow import run_pipeline
 
     run_id = str(uuid.uuid4())
+    cid = (request.company_id if request.company_id and current_user.role == "admin"
+           else current_user.company_id)
 
     background_tasks.add_task(
         run_pipeline,
@@ -214,7 +217,7 @@ async def run_pipeline_endpoint(
         end_date=request.end_date,
         report_type=request.report_type,
         recipients=request.recipients,
-        company_id=current_user.company_id,
+        company_id=cid,
     )
 
     return PipelineResponse(
@@ -259,12 +262,14 @@ async def run_pipeline_sync(
     """Run the pipeline synchronously and return the full result."""
     from src.graph.workflow import run_pipeline
 
+    cid = (request.company_id if request.company_id and current_user.role == "admin"
+           else current_user.company_id)
     state = run_pipeline(
         start_date=request.start_date,
         end_date=request.end_date,
         report_type=request.report_type,
         recipients=request.recipients,
-        company_id=current_user.company_id,
+        company_id=cid,
     )
 
     return {
@@ -410,24 +415,23 @@ async def get_report(
 
 @app.get("/db/stats")
 async def db_stats(current_user: TokenData = Depends(get_current_user)):
-    """Return database summary statistics for current user's company."""
+    """Return database summary statistics. Admin sees all, users see own company."""
     from src.tools.sql_tools import execute_query
 
+    is_admin = current_user.role == "admin"
     cid = current_user.company_id
+    where = "" if is_admin else " WHERE company_id = :cid"
+    params: dict = {} if is_admin else {"cid": cid}
+
     try:
-        total = execute_query(
-            "SELECT COUNT(*) as cnt FROM orders WHERE company_id = :cid",
-            {"cid": cid},
-        )
+        total = execute_query(f"SELECT COUNT(*) as cnt FROM orders{where}", params)
         date_range = execute_query(
-            "SELECT MIN(order_date) as min_date, MAX(order_date) as max_date "
-            "FROM orders WHERE company_id = :cid",
-            {"cid": cid},
+            f"SELECT MIN(order_date) as min_date, MAX(order_date) as max_date FROM orders{where}",
+            params,
         )
         categories = execute_query(
-            "SELECT category, COUNT(*) as cnt FROM orders "
-            "WHERE company_id = :cid GROUP BY category",
-            {"cid": cid},
+            f"SELECT category, COUNT(*) as cnt FROM orders{where} GROUP BY category",
+            params,
         )
 
         return {
@@ -440,6 +444,42 @@ async def db_stats(current_user: TokenData = Depends(get_current_user)):
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Database query failed: {exc}")
+
+
+# ── Company comparison (admin) ────────────────────────────────────────────────
+
+@app.get("/admin/company-stats")
+async def company_stats(admin: TokenData = Depends(require_admin)):
+    """Return per-company comparison metrics for admin dashboard."""
+    from src.tools.sql_tools import execute_query
+
+    df = execute_query("""
+        SELECT
+            c.id                                    AS company_id,
+            c.name                                  AS company_name,
+            COUNT(DISTINCT o.order_id)              AS total_orders,
+            COUNT(DISTINCT o.customer_id)           AS unique_customers,
+            ROUND(SUM(o.sales), 2)                  AS total_revenue,
+            ROUND(SUM(o.profit), 2)                 AS total_profit,
+            ROUND(SUM(o.profit) * 100.0 / NULLIF(SUM(o.sales), 0), 1) AS profit_margin_pct,
+            ROUND(SUM(o.sales) / COUNT(DISTINCT o.order_id), 2) AS avg_order_value,
+            ROUND(AVG(o.discount), 3)               AS avg_discount
+        FROM orders o
+        JOIN companies c ON o.company_id = c.id
+        GROUP BY c.id, c.name
+        ORDER BY total_revenue DESC
+    """)
+
+    companies = df.to_dict("records") if not df.empty else []
+
+    totals = {
+        "total_orders": int(df["total_orders"].sum()) if not df.empty else 0,
+        "total_revenue": round(float(df["total_revenue"].sum()), 2) if not df.empty else 0,
+        "total_profit": round(float(df["total_profit"].sum()), 2) if not df.empty else 0,
+        "total_customers": int(df["unique_customers"].sum()) if not df.empty else 0,
+    }
+
+    return {"companies": companies, "totals": totals}
 
 
 # ── RAG stats ─────────────────────────────────────────────────────────────────
