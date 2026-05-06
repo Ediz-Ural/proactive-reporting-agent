@@ -202,6 +202,7 @@ def calculate_period_comparison(
         return float(pd.to_numeric(df[col], errors="coerce").sum())
 
     comparison: dict[str, float] = {}
+    prev_rows = len(previous_df)
     for col in cols:
         curr_val = _sum(current_df, col)
         prev_val = _sum(previous_df, col)
@@ -212,6 +213,10 @@ def calculate_period_comparison(
         comparison[f"{col}_change_pct"] = round(pct, 2)
         comparison[f"{col}_current"] = round(curr_val, 2)
         comparison[f"{col}_previous"] = round(prev_val, 2)
+
+    comparison["previous_period_rows"] = prev_rows
+    if prev_rows < 3:
+        comparison["insufficient_previous_data"] = True
 
     return comparison
 

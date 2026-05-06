@@ -20,6 +20,11 @@ from src.graph.state import AgentState
 
 logger = logging.getLogger(__name__)
 
+REPORT_TYPE_LABELS = {
+    "weekly": "Haftalık",
+    "monthly": "Aylık",
+    "quarterly": "Çeyreklik",
+}
 
 # ── System prompt ────────────────────────────────────────────────────────────
 
@@ -28,7 +33,7 @@ Görevin: Verilen analiz sonuçlarını ve geçmiş rapor bağlamını kullanara
 kısa, öz ve aksiyon odaklı bir executive summary yazmak.
 
 RAPOR FORMATI:
-## Haftalık Satış Raporu — {start_date} / {end_date}
+## {report_type_label} Satış Raporu — {start_date} / {end_date}
 
 ### Özet Göstergeler
 - Toplam gelir, sipariş sayısı, ortalama sipariş değeri, benzersiz müşteri
@@ -64,6 +69,8 @@ KURALLAR:
 - Özet göstergelerdeki TÜM rakamlar (gelir, sipariş, müşteri, kâr) SADECE KAYNAK VERİ bloğundan alınmalıdır
 - customer_metrics listesindeki segment bazlı unique_customers değerlerini TOPLAMA — KAYNAK VERİ'deki unique_customers zaten toplam sayıdır
 - Herhangi bir rakamı "yaklaşık", "civarında" gibi ifadelerle değiştirme
+- Para birimi USD ($) kullan — TL değil
+- Önceki döneme göre % değişim ±%500'den büyükse, yüzdeyi yazmak yerine "önceki dönemde yeterli veri yok" yaz
 """
 
 # ── Few-shot example reports ─────────────────────────────────────────────────
@@ -71,14 +78,14 @@ KURALLAR:
 EXAMPLE_REPORT_1 = """## Haftalık Satış Raporu — 2023-12-18 / 2023-12-24
 
 ### Özet Göstergeler
-- Toplam gelir: 52,340.75 TL (önceki haftaya göre +15.2%)
+- Toplam gelir: $52,340.75 (önceki haftaya göre +15.2%)
 - Sipariş sayısı: 378 (önceki haftaya göre +12.8%)
-- Ortalama sipariş değeri: 138.47 TL
+- Ortalama sipariş değeri: $138.47
 - Benzersiz müşteri: 245
 
 ### Önemli Bulgular
 - [TREND] Yılsonu kampanyaları etkisiyle tüm kategorilerde güçlü artış. Technology %18.5 ile en yüksek büyümeyi kaydetti.
-- [ANOMALİ] 22 Aralık'ta günlük satış 11,200 TL ile ayın zirvesine ulaştı.
+- [ANOMALİ] 22 Aralık'ta günlük satış $11,200 ile ayın zirvesine ulaştı.
 - [TAHMİN] Yılbaşı haftasında %5-8 düşüş bekleniyor (tatil etkisi).
 
 ### Aksiyon Önerileri
@@ -86,21 +93,21 @@ EXAMPLE_REPORT_1 = """## Haftalık Satış Raporu — 2023-12-18 / 2023-12-24
 2. Yılın en iyi 50 müşterisine teşekkür e-postası gönderin (CRM segmentasyonu kullanın).
 """
 
-EXAMPLE_REPORT_2 = """## Haftalık Satış Raporu — 2023-12-25 / 2023-12-31
+EXAMPLE_REPORT_2 = """## Aylık Satış Raporu — 2023-12-01 / 2023-12-31
 
 ### Özet Göstergeler
-- Toplam gelir: 38,920.40 TL (önceki haftaya göre -25.6%)
-- Sipariş sayısı: 256 (önceki haftaya göre -32.3%)
-- Ortalama sipariş değeri: 152.03 TL
-- Benzersiz müşteri: 165
+- Toplam gelir: $138,920.40 (önceki aya göre -5.6%)
+- Sipariş sayısı: 856 (önceki aya göre -2.3%)
+- Ortalama sipariş değeri: $162.29
+- Benzersiz müşteri: 465
 
 ### Önemli Bulgular
 - [TREND] Beklenen yılbaşı düşüşü gerçekleşti. Tüm kategorilerde gerileme.
 - [ANOMALİ] 25-26 Aralık'ta sipariş sayısı günlük 8'e düştü (tatil günleri).
-- [TAHMİN] Ocak ilk hafta toparlanma bekleniyor: 44,000-48,000 TL aralığı.
+- [TAHMİN] Ocak ayında toparlanma bekleniyor: $144,000-$148,000 aralığı.
 
 ### Geçmiş Karşılaştırma
-- Geçen yılın aynı döneminde (2022-W52) benzer düşüş yaşanmıştı (-%22). Bu yılki düşüş biraz daha sert.
+- Geçen yılın aynı döneminde (Aralık 2022) benzer düşüş yaşanmıştı (-%4.2). Bu yılki düşüş biraz daha sert.
 
 ### Aksiyon Önerileri
 1. 2 Ocak itibarıyla "Yeni Yıl Fırsatları" kampanyası başlatın.
@@ -194,7 +201,12 @@ class WriterAgent:
         evaluation: dict | None,
     ) -> str:
         """Build the prompt using the configured strategy."""
-        system = SYSTEM_PROMPT.format(start_date=start_date, end_date=end_date)
+        type_label = REPORT_TYPE_LABELS.get(report_type, "Periyodik")
+        system = SYSTEM_PROMPT.format(
+            start_date=start_date,
+            end_date=end_date,
+            report_type_label=type_label,
+        )
 
         # Add revision note if evaluator rejected
         revision_note = ""
@@ -298,10 +310,10 @@ Geçmiş Rapor Bağlamı:
             return ""
         return (
             "KAYNAK VERİ — ÖZET GÖSTERGELER (Bu rakamları AYNEN kullan):\n"
-            f"- Toplam gelir: {summary.get('total_revenue', 'N/A')} TL\n"
-            f"- Toplam kâr: {summary.get('total_profit', 'N/A')} TL\n"
+            f"- Toplam gelir: ${summary.get('total_revenue', 'N/A')}\n"
+            f"- Toplam kâr: ${summary.get('total_profit', 'N/A')}\n"
             f"- Sipariş sayısı: {summary.get('total_orders', 'N/A')}\n"
-            f"- Ortalama sipariş değeri: {summary.get('avg_order_value', 'N/A')} TL\n"
+            f"- Ortalama sipariş değeri: ${summary.get('avg_order_value', 'N/A')}\n"
             f"- Benzersiz müşteri: {summary.get('unique_customers', 'N/A')}\n"
             f"- Kâr marjı: %{summary.get('profit_margin_pct', 'N/A')}\n"
         )
@@ -330,15 +342,16 @@ Geçmiş Rapor Bağlamı:
         raw_data: dict[str, Any],
     ) -> str:
         """Template-based report generation without LLM."""
-        lines = [f"## Haftalık Satış Raporu — {start_date} / {end_date}", ""]
+        type_label = REPORT_TYPE_LABELS.get(report_type, "Periyodik")
+        lines = [f"## {type_label} Satış Raporu — {start_date} / {end_date}", ""]
 
         # Özet Göstergeler from raw_data weekly_summary
         summary = raw_data.get("weekly_summary", {})
         lines.append("### Özet Göstergeler")
         if summary:
-            lines.append(f"- Toplam gelir: {summary.get('total_revenue', summary.get('total_sales', 'N/A'))} TL")
+            lines.append(f"- Toplam gelir: ${summary.get('total_revenue', summary.get('total_sales', 'N/A'))}")
             lines.append(f"- Sipariş sayısı: {summary.get('total_orders', 'N/A')}")
-            lines.append(f"- Ortalama sipariş değeri: {summary.get('avg_order_value', 'N/A')} TL")
+            lines.append(f"- Ortalama sipariş değeri: ${summary.get('avg_order_value', 'N/A')}")
             lines.append(f"- Benzersiz müşteri: {summary.get('unique_customers', 'N/A')}")
         else:
             daily = raw_data.get("daily_sales", [])
@@ -346,9 +359,9 @@ Geçmiş Rapor Bağlamı:
                 total_sales = sum(r.get("total_sales", 0) for r in daily)
                 total_orders = sum(r.get("total_orders", 0) for r in daily)
                 avg_val = round(total_sales / total_orders, 2) if total_orders else 0
-                lines.append(f"- Toplam gelir: {round(total_sales, 2)} TL")
+                lines.append(f"- Toplam gelir: ${round(total_sales, 2)}")
                 lines.append(f"- Sipariş sayısı: {total_orders}")
-                lines.append(f"- Ortalama sipariş değeri: {avg_val} TL")
+                lines.append(f"- Ortalama sipariş değeri: ${avg_val}")
             else:
                 lines.append("- Veri mevcut değil")
         lines.append("")
@@ -403,7 +416,7 @@ Geçmiş Rapor Bağlamı:
                     name = cat.get("category", "N/A")
                     sales = cat.get("total_sales", "N/A")
                     share = cat.get("sales_share_pct", "N/A")
-                    lines.append(f"- {name}: {sales} TL (pay: %{share})")
+                    lines.append(f"- {name}: ${sales} (pay: %{share})")
             lines.append("")
 
         # Historical context
