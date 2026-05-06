@@ -281,41 +281,70 @@ INDEXES = [
 ]
 
 
+SEGMENT_REGION_COMPANIES = [
+    {"id": 1,  "segment": "Consumer",    "region": "East",    "name": "East Consumer Co.",       "slug": "east-consumer",    "domain": "eastconsumer.com"},
+    {"id": 2,  "segment": "Consumer",    "region": "West",    "name": "West Consumer Co.",       "slug": "west-consumer",    "domain": "westconsumer.com"},
+    {"id": 3,  "segment": "Consumer",    "region": "Central", "name": "Central Consumer Co.",     "slug": "central-consumer", "domain": "centralconsumer.com"},
+    {"id": 4,  "segment": "Consumer",    "region": "South",   "name": "South Consumer Co.",      "slug": "south-consumer",   "domain": "southconsumer.com"},
+    {"id": 5,  "segment": "Corporate",   "region": "East",    "name": "East Corporate Ltd.",     "slug": "east-corporate",   "domain": "eastcorporate.com"},
+    {"id": 6,  "segment": "Corporate",   "region": "West",    "name": "West Corporate Ltd.",     "slug": "west-corporate",   "domain": "westcorporate.com"},
+    {"id": 7,  "segment": "Corporate",   "region": "Central", "name": "Central Corporate Ltd.",   "slug": "central-corporate","domain": "centralcorporate.com"},
+    {"id": 8,  "segment": "Corporate",   "region": "South",   "name": "South Corporate Ltd.",    "slug": "south-corporate",  "domain": "southcorporate.com"},
+    {"id": 9,  "segment": "Home Office", "region": "East",    "name": "East Home Office Inc.",   "slug": "east-homeoffice",  "domain": "easthomeoffice.com"},
+    {"id": 10, "segment": "Home Office", "region": "West",    "name": "West Home Office Inc.",   "slug": "west-homeoffice",  "domain": "westhomeoffice.com"},
+    {"id": 11, "segment": "Home Office", "region": "Central", "name": "Central Home Office Inc.", "slug": "central-homeoffice","domain": "centralhomeoffice.com"},
+    {"id": 12, "segment": "Home Office", "region": "South",   "name": "South Home Office Inc.",  "slug": "south-homeoffice", "domain": "southhomeoffice.com"},
+]
+
+
+def _build_company_map() -> dict[tuple[str, str], int]:
+    """Return {(segment, region): company_id} mapping."""
+    return {(c["segment"], c["region"]): c["id"] for c in SEGMENT_REGION_COMPANIES}
+
+
 def seed_default_company_and_admin(engine) -> None:
-    """Create default company and admin user for development."""
+    """Create 12 companies (segment x region), admin user, and per-company demo users."""
     from passlib.hash import bcrypt
 
     with engine.begin() as conn:
-        conn.execute(text("""
-            INSERT OR IGNORE INTO companies (id, name, slug, email_domain)
-            VALUES (1, 'Superstore Inc.', 'superstore', 'superstore.com')
-        """))
+        # Clear stale data so IDs align
+        conn.execute(text("DELETE FROM users"))
+        conn.execute(text("DELETE FROM companies"))
 
-        password_hash = bcrypt.hash("admin123")
+        for c in SEGMENT_REGION_COMPANIES:
+            conn.execute(text("""
+                INSERT INTO companies (id, name, slug, email_domain)
+                VALUES (:id, :name, :slug, :domain)
+            """), {"id": c["id"], "name": c["name"], "slug": c["slug"], "domain": c["domain"]})
+
+        admin_hash = bcrypt.hash("admin123")
         conn.execute(text("""
-            INSERT OR IGNORE INTO users (email, password_hash, full_name, role, company_id)
+            INSERT INTO users (email, password_hash, full_name, role, company_id)
             VALUES (:email, :hash, :name, :role, :company_id)
         """), {
             "email": "admin@superstore.com",
-            "hash": password_hash,
+            "hash": admin_hash,
             "name": "Admin User",
             "role": "admin",
             "company_id": 1,
         })
 
-        password_hash = bcrypt.hash("user123")
-        conn.execute(text("""
-            INSERT OR IGNORE INTO users (email, password_hash, full_name, role, company_id)
-            VALUES (:email, :hash, :name, :role, :company_id)
-        """), {
-            "email": "user@superstore.com",
-            "hash": password_hash,
-            "name": "Demo User",
-            "role": "user",
-            "company_id": 1,
-        })
+        user_hash = bcrypt.hash("user123")
+        for c in SEGMENT_REGION_COMPANIES:
+            email = f"user@{c['domain']}"
+            conn.execute(text("""
+                INSERT INTO users (email, password_hash, full_name, role, company_id)
+                VALUES (:email, :hash, :name, :role, :company_id)
+            """), {
+                "email": email,
+                "hash": user_hash,
+                "name": f"{c['name']} User",
+                "role": "user",
+                "company_id": c["id"],
+            })
 
-    logger.info("Default company and users seeded.")
+    logger.info("Seeded %d companies, admin user, and %d company users.",
+                len(SEGMENT_REGION_COMPANIES), len(SEGMENT_REGION_COMPANIES))
 
 
 def seed_database(df: pd.DataFrame) -> None:
@@ -342,8 +371,12 @@ def seed_database(df: pd.DataFrame) -> None:
     df["discount"] = pd.to_numeric(df["discount"], errors="coerce").fillna(0).round(2)
     df["profit"] = pd.to_numeric(df["profit"], errors="coerce").fillna(0).round(2)
 
-    # Add company_id column (default company 1)
-    df["company_id"] = 1
+    # Assign company_id based on segment + region
+    company_map = _build_company_map()
+    df["company_id"] = df.apply(
+        lambda r: company_map.get((r.get("segment", ""), r.get("region", "")), 1),
+        axis=1,
+    )
 
     # Drop duplicates on PK columns
     before = len(df)
@@ -373,9 +406,19 @@ def seed_database(df: pd.DataFrame) -> None:
     df.to_sql("orders", engine, if_exists="replace", index=False, chunksize=500)
     logger.info("Inserted %d rows into 'orders' table", len(df))
 
-    # Set company_id for any rows that might be NULL
+    # Fallback: set company_id=1 only for rows that are NULL
     with engine.begin() as conn:
         conn.execute(text("UPDATE orders SET company_id = 1 WHERE company_id IS NULL"))
+
+    # Recreate tables (to_sql replace drops them)
+    with engine.begin() as conn:
+        conn.execute(text(COMPANIES_DDL))
+        conn.execute(text(USERS_DDL))
+        for idx_sql in USERS_INDEXES:
+            try:
+                conn.execute(text(idx_sql))
+            except Exception:
+                pass
 
     # Seed default company and admin user
     seed_default_company_and_admin(engine)

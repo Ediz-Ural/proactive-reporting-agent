@@ -465,3 +465,89 @@ class TestAdminUploadData:
         )
         assert response.status_code == 400
         assert "Missing required columns" in response.json()["detail"]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DB SYNC TESTS — direct SQL changes reflected via API
+# ══════════════════════════════════════════════════════════════════════════════
+
+class TestDbSync:
+    """Verify that direct SQL changes are immediately visible through the API."""
+
+    def test_direct_sql_company_visible_in_api(self, client, admin_headers, test_engine):
+        """Company inserted via raw SQL should appear in GET /admin/companies."""
+        with test_engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO companies (name, slug, email_domain)
+                VALUES ('Direct SQL Co.', 'direct-sql', 'directsql.com')
+            """))
+
+        response = client.get("/admin/companies", headers=admin_headers)
+        assert response.status_code == 200
+        names = [c["name"] for c in response.json()["companies"]]
+        assert "Direct SQL Co." in names
+
+    def test_direct_sql_company_auto_increment(self, client, admin_headers, test_engine):
+        """Company added via SQL gets next auto-increment id."""
+        with test_engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO companies (name, slug, email_domain)
+                VALUES ('AutoInc Co.', 'autoinc', 'autoinc.com')
+            """))
+
+        response = client.get("/admin/companies", headers=admin_headers)
+        companies = response.json()["companies"]
+        autoinc = [c for c in companies if c["slug"] == "autoinc"][0]
+        assert autoinc["id"] > 2  # must be after the 2 seeded companies
+
+    def test_admin_created_company_auto_increment(self, client, admin_headers):
+        """Company created via API gets next auto-increment id after existing max."""
+        response = client.post("/admin/companies", headers=admin_headers, json={
+            "name": "API Created Co.", "slug": "api-created", "email_domain": "apicreated.com",
+        })
+        assert response.status_code == 200
+
+        response = client.get("/admin/companies", headers=admin_headers)
+        companies = response.json()["companies"]
+        api_co = [c for c in companies if c["slug"] == "api-created"][0]
+        max_other = max(c["id"] for c in companies if c["slug"] != "api-created")
+        assert api_co["id"] > max_other
+
+    def test_direct_sql_orders_visible_in_stats(self, client, admin_headers, test_engine):
+        """Orders inserted via raw SQL should appear in DB stats."""
+        with test_engine.connect() as conn:
+            before = conn.execute(text(
+                "SELECT COUNT(*) FROM orders WHERE company_id = 1"
+            )).scalar()
+
+        with test_engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO orders (order_id, order_date, product_id, category, sub_category,
+                    sales, quantity, profit, company_id, segment, country, city, state, region, product_name)
+                VALUES ('ORD-SYNC-1', '2024-03-01', 'P-SYNC', 'Technology', 'Phones',
+                    750.0, 3, 150.0, 1, 'Consumer', 'US', 'NYC', 'NY', 'East', 'SyncPhone')
+            """))
+
+        with test_engine.connect() as conn:
+            after = conn.execute(text(
+                "SELECT COUNT(*) FROM orders WHERE company_id = 1"
+            )).scalar()
+
+        assert after == before + 1
+
+    def test_direct_sql_user_can_login(self, client, test_engine):
+        """User inserted via raw SQL should be able to login."""
+        from passlib.hash import bcrypt
+        pw_hash = bcrypt.hash("directpass")
+        with test_engine.begin() as conn:
+            conn.execute(text("""
+                INSERT INTO users (email, password_hash, full_name, role, company_id)
+                VALUES (:email, :hash, :name, :role, :cid)
+            """), {"email": "direct@a.com", "hash": pw_hash, "name": "Direct User", "role": "user", "cid": 1})
+
+        response = client.post("/auth/login", data={
+            "username": "direct@a.com",
+            "password": "directpass",
+        })
+        assert response.status_code == 200
+        assert "access_token" in response.json()
