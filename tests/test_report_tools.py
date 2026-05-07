@@ -96,7 +96,7 @@ class TestRenderReport:
         from src.tools.report_tools import render_report
 
         html = render_report("Basit rapor")
-        assert "Satış Raporu" in html  # default title
+        assert "Tedarikçi Performans Raporu" in html  # default title
         assert "Oluşturulma:" in html
 
 

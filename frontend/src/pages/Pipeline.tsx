@@ -112,16 +112,16 @@ export default function Pipeline() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-xl font-bold text-gray-900">Pipeline</h2>
+      <h2 className="text-xl font-bold text-gray-900">Rapor Olustur</h2>
 
       {/* Input Form */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">Rapor Uret</h3>
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Tedarikci Raporu Olustur</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">
               <Building2 size={12} className="inline mr-1" />
-              Sirket
+              Tedarikci
             </label>
             <select
               value={companyId}
@@ -177,7 +177,7 @@ export default function Pipeline() {
           </button>
           {selectedCompanyName && (
             <span className="text-xs text-gray-400">
-              {selectedCompanyName} icin rapor uretilecek
+              {selectedCompanyName} icin performans raporu olusturulacak
             </span>
           )}
         </div>

@@ -65,7 +65,7 @@ def render_report(
         return f"<html><body>{summary_html}</body></html>"
 
     rendered = template.render(
-        title=context.get("title", "Satış Raporu"),
+        title=context.get("title", "Tedarikçi Performans Raporu"),
         period=context.get("period", ""),
         summary_html=summary_html,
         generated_at=context.get("generated_at", datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")),

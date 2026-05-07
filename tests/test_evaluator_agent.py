@@ -47,9 +47,9 @@ class TestEvaluatorAgent:
             },
             "historical_context": "",
             "draft_report": (
-                "## Haftalık Satış Raporu — 2024-01-01 / 2024-01-31\n\n"
+                "## Haftalık Tedarikçi Performans Raporu — 2024-01-01 / 2024-01-31\n\n"
                 "### Özet Göstergeler\n"
-                "- Toplam gelir: 52340.75 TL\n"
+                "- Toplam gelir: $52340.75\n"
                 "- Sipariş sayısı: 378\n\n"
                 "### Önemli Bulgular\n"
                 "- [TREND] Satışlar yükseliş trendinde\n"
@@ -255,7 +255,7 @@ class TestEvaluatorAgent:
         """Rule-based gives low accuracy when revenue is missing from report."""
         state = self._make_state(
             draft_report=(
-                "## Haftalık Satış Raporu\n\n"
+                "## Haftalık Tedarikçi Performans Raporu\n\n"
                 "### Özet Göstergeler\n- Veri yok\n\n"
                 "### Önemli Bulgular\n- Yok\n\n"
                 "### Aksiyon Önerileri\n1. Veri toplama gerekli.\n2. İyileştirme yapılmalı.\n"

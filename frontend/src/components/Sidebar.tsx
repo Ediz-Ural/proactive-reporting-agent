@@ -16,11 +16,11 @@ const userLinks = [
 
 const adminLinks = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { to: '/pipeline', label: 'Pipeline', icon: Play },
+  { to: '/pipeline', label: 'Rapor Olustur', icon: Play },
   { to: '/reports', label: 'Raporlar', icon: FileText },
   { to: '/settings', label: 'Ayarlar', icon: Settings },
   { to: '/admin/upload', label: 'Veri Yukle', icon: Upload },
-  { to: '/admin/companies', label: 'Sirketler', icon: Building2 },
+  { to: '/admin/companies', label: 'Tedarikciler', icon: Building2 },
   { to: '/admin/users', label: 'Kullanicilar', icon: Users },
 ];
 
@@ -42,9 +42,9 @@ export default function Sidebar() {
     <aside className="w-56 bg-gray-900 text-gray-300 flex flex-col shrink-0">
       <div className="px-4 py-5 border-b border-gray-800">
         <h1 className="text-base font-semibold text-white tracking-tight">
-          Proaktif Raporlama
+          Tedarikci Raporlama
         </h1>
-        <p className="text-xs text-gray-500 mt-0.5">Multi-Agent System</p>
+        <p className="text-xs text-gray-500 mt-0.5">Performans Platformu</p>
       </div>
       <nav className="flex-1 py-3 space-y-0.5 px-2">
         {mainLinks.map(({ to, label, icon: Icon }) => (

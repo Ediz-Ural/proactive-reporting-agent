@@ -194,6 +194,9 @@ CREATE TABLE IF NOT EXISTS companies (
     name            VARCHAR(200) NOT NULL UNIQUE,
     slug            VARCHAR(100) NOT NULL UNIQUE,
     email_domain    VARCHAR(200),
+    segment         VARCHAR(30),
+    region          VARCHAR(20),
+    company_type    VARCHAR(30) DEFAULT 'supplier',
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
     is_active       BOOLEAN DEFAULT 1
 )
@@ -282,18 +285,18 @@ INDEXES = [
 
 
 SEGMENT_REGION_COMPANIES = [
-    {"id": 1,  "segment": "Consumer",    "region": "East",    "name": "East Consumer Co.",       "slug": "east-consumer",    "domain": "eastconsumer.com"},
-    {"id": 2,  "segment": "Consumer",    "region": "West",    "name": "West Consumer Co.",       "slug": "west-consumer",    "domain": "westconsumer.com"},
-    {"id": 3,  "segment": "Consumer",    "region": "Central", "name": "Central Consumer Co.",     "slug": "central-consumer", "domain": "centralconsumer.com"},
-    {"id": 4,  "segment": "Consumer",    "region": "South",   "name": "South Consumer Co.",      "slug": "south-consumer",   "domain": "southconsumer.com"},
-    {"id": 5,  "segment": "Corporate",   "region": "East",    "name": "East Corporate Ltd.",     "slug": "east-corporate",   "domain": "eastcorporate.com"},
-    {"id": 6,  "segment": "Corporate",   "region": "West",    "name": "West Corporate Ltd.",     "slug": "west-corporate",   "domain": "westcorporate.com"},
-    {"id": 7,  "segment": "Corporate",   "region": "Central", "name": "Central Corporate Ltd.",   "slug": "central-corporate","domain": "centralcorporate.com"},
-    {"id": 8,  "segment": "Corporate",   "region": "South",   "name": "South Corporate Ltd.",    "slug": "south-corporate",  "domain": "southcorporate.com"},
-    {"id": 9,  "segment": "Home Office", "region": "East",    "name": "East Home Office Inc.",   "slug": "east-homeoffice",  "domain": "easthomeoffice.com"},
-    {"id": 10, "segment": "Home Office", "region": "West",    "name": "West Home Office Inc.",   "slug": "west-homeoffice",  "domain": "westhomeoffice.com"},
-    {"id": 11, "segment": "Home Office", "region": "Central", "name": "Central Home Office Inc.", "slug": "central-homeoffice","domain": "centralhomeoffice.com"},
-    {"id": 12, "segment": "Home Office", "region": "South",   "name": "South Home Office Inc.",  "slug": "south-homeoffice", "domain": "southhomeoffice.com"},
+    {"id": 1,  "segment": "Consumer",    "region": "East",    "name": "TechVision Elektronik A.S.",     "slug": "techvision",         "domain": "techvision.com.tr"},
+    {"id": 2,  "segment": "Consumer",    "region": "West",    "name": "OfisPro Kirtasiye Ltd.",         "slug": "ofispro",            "domain": "ofispro.com.tr"},
+    {"id": 3,  "segment": "Consumer",    "region": "Central", "name": "Anadolu Mobilya A.S.",           "slug": "anadolu-mobilya",    "domain": "anadolumobilya.com.tr"},
+    {"id": 4,  "segment": "Consumer",    "region": "South",   "name": "Akdeniz Perakende Ltd.",         "slug": "akdeniz-perakende",  "domain": "akdenizperakende.com.tr"},
+    {"id": 5,  "segment": "Corporate",   "region": "East",    "name": "Marmara Teknoloji A.S.",         "slug": "marmara-tek",        "domain": "marmaratek.com.tr"},
+    {"id": 6,  "segment": "Corporate",   "region": "West",    "name": "Ege Bilisim Ltd.",               "slug": "ege-bilisim",        "domain": "egebilisim.com.tr"},
+    {"id": 7,  "segment": "Corporate",   "region": "Central", "name": "Baskent Ofis A.S.",              "slug": "baskent-ofis",       "domain": "baskentofis.com.tr"},
+    {"id": 8,  "segment": "Corporate",   "region": "South",   "name": "Akdeniz Ticaret Ltd.",           "slug": "akdeniz-ticaret",    "domain": "akdenizticaret.com.tr"},
+    {"id": 9,  "segment": "Home Office", "region": "East",    "name": "Trakya Ev&Ofis A.S.",            "slug": "trakya-evofis",      "domain": "trakyaevofis.com.tr"},
+    {"id": 10, "segment": "Home Office", "region": "West",    "name": "Izmir Depo Ltd.",                "slug": "izmir-depo",         "domain": "izmirdepo.com.tr"},
+    {"id": 11, "segment": "Home Office", "region": "Central", "name": "Konya Tedarik A.S.",             "slug": "konya-tedarik",      "domain": "konyatedarik.com.tr"},
+    {"id": 12, "segment": "Home Office", "region": "South",   "name": "Antalya Lojistik Ltd.",          "slug": "antalya-lojistik",   "domain": "antalyalojistik.com.tr"},
 ]
 
 
@@ -313,9 +316,12 @@ def seed_default_company_and_admin(engine) -> None:
 
         for c in SEGMENT_REGION_COMPANIES:
             conn.execute(text("""
-                INSERT INTO companies (id, name, slug, email_domain)
-                VALUES (:id, :name, :slug, :domain)
-            """), {"id": c["id"], "name": c["name"], "slug": c["slug"], "domain": c["domain"]})
+                INSERT INTO companies (id, name, slug, email_domain, segment, region, company_type)
+                VALUES (:id, :name, :slug, :domain, :segment, :region, 'supplier')
+            """), {
+                "id": c["id"], "name": c["name"], "slug": c["slug"],
+                "domain": c["domain"], "segment": c["segment"], "region": c["region"],
+            })
 
         admin_hash = bcrypt.hash("admin123")
         conn.execute(text("""

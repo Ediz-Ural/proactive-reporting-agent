@@ -263,7 +263,7 @@ function AdminDashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Dashboard</h2>
+        <h2 className="text-xl font-bold text-gray-900">Tedarikci Performans Paneli</h2>
         <StatusBadge
           status={health?.status === 'ok' ? 'ok' : 'degraded'}
           label={health?.status === 'ok' ? 'Sistem Aktif' : 'Sorun Var'}
@@ -309,15 +309,15 @@ function AdminDashboard() {
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
           <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
             <Building2 size={16} className="text-gray-400" />
-            Sirket Karsilastirmasi
-            <span className="text-xs font-normal text-gray-400">({companyStats.length} sirket)</span>
+            Tedarikci Karsilastirmasi
+            <span className="text-xs font-normal text-gray-400">({companyStats.length} tedarikci)</span>
           </h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200">
                   <th className="text-left py-2.5 px-3 text-gray-500 font-medium">#</th>
-                  <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Sirket</th>
+                  <th className="text-left py-2.5 px-3 text-gray-500 font-medium">Tedarikci</th>
                   <th
                     className="text-right py-2.5 px-3 text-gray-500 font-medium cursor-pointer hover:text-gray-800 select-none"
                     onClick={() => handleSort('total_revenue')}

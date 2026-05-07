@@ -96,7 +96,7 @@ class TestWriterAgent:
 
         assert result["draft_report"] is not None
         assert len(result["draft_report"]) > 0
-        assert "Haftalık Satış Raporu" in result["draft_report"]
+        assert "Tedarikçi Performans Raporu" in result["draft_report"]
         assert "45000" in result["draft_report"]
 
     def test_fallback_report_has_sections(self):

@@ -27,6 +27,7 @@ from src.tools.analysis_tools import (
     calculate_category_performance,
     calculate_period_comparison,
     calculate_rfm_segments,
+    calculate_sector_comparison,
     calculate_trend,
     decompose_time_series,
     detect_anomalies_iqr,
@@ -126,6 +127,13 @@ class AnalystAgent:
         if "rfm_segments" in analysis_plan:
             results["rfm_segments"], ok = self._run_rfm(start_date, end_date, company_id)
             (completed if ok else failed).append("rfm_segments")
+
+        # ── 8. Sector Comparison ─────────────────────────────────────────────
+        if "sector_comparison" in analysis_plan:
+            results["sector_comparison"], ok = self._run_sector_comparison(
+                company_id, start_date, end_date,
+            )
+            (completed if ok else failed).append("sector_comparison")
 
         # ── Metadata ─────────────────────────────────────────────────────────
         results["analysis_metadata"] = {
@@ -337,4 +345,21 @@ class AnalystAgent:
             }, True
         except Exception as exc:
             logger.error("RFM segmentation failed: %s", exc)
+            return {}, False
+
+    def _run_sector_comparison(
+        self, company_id: int, start_date: str, end_date: str,
+    ) -> tuple[dict, bool]:
+        """Compare company KPIs against anonymized sector peers."""
+        try:
+            result = calculate_sector_comparison(company_id, start_date, end_date)
+            if result:
+                logger.info(
+                    "Sector comparison: rank %s/%s",
+                    result.get("company_rank"),
+                    result.get("total_in_sector"),
+                )
+            return result, True
+        except Exception as exc:
+            logger.error("Sector comparison failed: %s", exc)
             return {}, False

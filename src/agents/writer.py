@@ -28,16 +28,22 @@ REPORT_TYPE_LABELS = {
 
 # ── System prompt ────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Sen bir kıdemli iş analisti ve rapor yazarısın.
-Görevin: Verilen analiz sonuçlarını ve geçmiş rapor bağlamını kullanarak
-kısa, öz ve aksiyon odaklı bir executive summary yazmak.
+SYSTEM_PROMPT = """Sen bir kıdemli tedarikçi performans analisti ve rapor yazarısın.
+Görevin: Tedarikçinin satış verilerini, sektör karşılaştırmasını ve geçmiş rapor bağlamını
+kullanarak kısa, öz ve aksiyon odaklı bir tedarikçi performans raporu yazmak.
 
 RAPOR FORMATI:
-## {report_type_label} Satış Raporu — {start_date} / {end_date}
+## {report_type_label} Tedarikçi Performans Raporu — {start_date} / {end_date}
 
 ### Özet Göstergeler
 - Toplam gelir, sipariş sayısı, ortalama sipariş değeri, benzersiz müşteri
-- Her metrik için önceki döneme göre % değişim
+- Her metrik için önceki döneme göre % değişim (varsa)
+
+### Sektör Karşılaştırması
+- Tedarikçinin sektör içindeki sıralaması
+- Sektör ortalamasına kıyasla gelir, kâr marjı, sipariş performansı
+- Rakipler anonim olarak (Firma A, Firma B) referans verilir
+- Sektör ortalamasının üstünde/altında olan metrikler vurgulanır
 
 ### Önemli Bulgular
 - [TREND] Tespit edilen trendler ve yorumları
@@ -49,7 +55,7 @@ RAPOR FORMATI:
 - Dönemler arası karşılaştırma
 
 ### Aksiyon Önerileri
-1. Spesifik, ölçülebilir, uygulanabilir öneriler
+1. Tedarikçinin sektör içindeki konumunu iyileştirmeye yönelik öneriler
 2. Her öneri bir bulguya dayalı olmalı
 3. Öncelik sırası belirtilmeli
 
@@ -60,11 +66,17 @@ GEÇMİŞ RAPOR BAĞLAMI KULLANIMI:
 - Eğer geçmiş bağlam boşsa veya ilgisizse, zorla referans verme — sadece mevcut veriyi kullan
 - Geçmiş bağlamı RAW olarak kopyalama, kendi cümlelerinle özetle
 
+SEKTÖR KARŞILAŞTIRMASI KULLANIMI:
+- sector_comparison verisinde firma sıralaması, sektör ortalamaları ve anonim rakipler bulunur
+- Rakip firma isimlerini KESİNLİKLE açıklama — sadece "Firma A", "Firma B" kullan
+- Sektör ortalamasının üstünde olan metrikleri olumlu, altında olanları iyileştirme fırsatı olarak belirt
+- Eğer sector_comparison verisi boşsa veya "note" içeriyorsa, bu bölümü atla
+
 KURALLAR:
 - Türkçe yaz
 - Rakamları kesin ver (yuvarlama yapma)
 - Hallucination yapma — sadece verilen verileri kullan
-- Maksimum 500 kelime
+- Maksimum 600 kelime
 - Eğer geçmiş bağlam boşsa, geçmiş karşılaştırma bölümünü atla
 - Özet göstergelerdeki TÜM rakamlar (gelir, sipariş, müşteri, kâr) SADECE KAYNAK VERİ bloğundan alınmalıdır
 - customer_metrics listesindeki segment bazlı unique_customers değerlerini TOPLAMA — KAYNAK VERİ'deki unique_customers zaten toplam sayıdır
@@ -77,18 +89,25 @@ KURALLAR:
 VERİ KAYNAKLARI — KARIŞTIRMA:
 - "trends_AY_ICI_GUNLUK_VERI": Ay İÇİNDEKİ günlük satış verileri. Bu veriler aynı dönem içindeki gün-gün değişimleri gösterir. Bunları ASLA "önceki dönem" ile karşılaştırma olarak KULLANMA.
 - "period_comparison": DÖNEMLER ARASI karşılaştırma (bu ay vs önceki ay). Sadece bu veriyi dönem karşılaştırması için kullan.
+- "sector_comparison": Sektör içi karşılaştırma (aynı segmentteki firmalar arası). Sıralama ve ortalama bilgilerini kullan.
 - ASLA ay-içi günlük verilerdeki ilk gün / son gün değerlerini "dönem geliri düştü/arttı" şeklinde YORUMLAMA. Dönem toplam geliri KAYNAK VERİ bloğundadır.
 """
 
 # ── Few-shot example reports ─────────────────────────────────────────────────
 
-EXAMPLE_REPORT_1 = """## Haftalık Satış Raporu — 2023-12-18 / 2023-12-24
+EXAMPLE_REPORT_1 = """## Haftalık Tedarikçi Performans Raporu — 2023-12-18 / 2023-12-24
 
 ### Özet Göstergeler
 - Toplam gelir: $52,340.75 (önceki haftaya göre +15.2%)
 - Sipariş sayısı: 378 (önceki haftaya göre +12.8%)
 - Ortalama sipariş değeri: $138.47
 - Benzersiz müşteri: 245
+
+### Sektör Karşılaştırması
+- Sektör sıralaması: **2/4** (Consumer segmenti)
+- Gelir sektör ortalamasının %12 üzerinde ($46,700 ort.)
+- Kâr marjı %11.3 — sektör ortalaması %9.8 (üstünde)
+- Firma A lider konumda ($58,200 gelir), Firma C en düşük performansı gösteriyor
 
 ### Önemli Bulgular
 - [TREND] Yılsonu kampanyaları etkisiyle tüm kategorilerde güçlü artış. Technology %18.5 ile en yüksek büyümeyi kaydetti.
@@ -97,16 +116,22 @@ EXAMPLE_REPORT_1 = """## Haftalık Satış Raporu — 2023-12-18 / 2023-12-24
 
 ### Aksiyon Önerileri
 1. Yılbaşı sonrası stok eritme kampanyası planlayın — özellikle Furniture kategorisinde fazla stok mevcut.
-2. Yılın en iyi 50 müşterisine teşekkür e-postası gönderin (CRM segmentasyonu kullanın).
+2. Sektör lideri Firma A'nın gelir farkını kapatmak için Technology kategorisine odaklanın.
 """
 
-EXAMPLE_REPORT_2 = """## Aylık Satış Raporu — 2023-12-01 / 2023-12-31
+EXAMPLE_REPORT_2 = """## Aylık Tedarikçi Performans Raporu — 2023-12-01 / 2023-12-31
 
 ### Özet Göstergeler
 - Toplam gelir: $138,920.40 (önceki aya göre -5.6%)
 - Sipariş sayısı: 856 (önceki aya göre -2.3%)
 - Ortalama sipariş değeri: $162.29
 - Benzersiz müşteri: 465
+
+### Sektör Karşılaştırması
+- Sektör sıralaması: **1/4** (Corporate segmenti)
+- Gelir sektör ortalamasının %22 üzerinde — lider konumda
+- Kâr marjı %8.7 — sektör ortalaması %10.1 (altında, iyileştirme fırsatı)
+- Firma B ve Firma C benzer gelir seviyesinde, ancak daha yüksek marjla çalışıyor
 
 ### Önemli Bulgular
 - [TREND] Beklenen yılbaşı düşüşü gerçekleşti. Tüm kategorilerde gerileme.
@@ -117,8 +142,8 @@ EXAMPLE_REPORT_2 = """## Aylık Satış Raporu — 2023-12-01 / 2023-12-31
 - Geçen yılın aynı döneminde (Aralık 2022) benzer düşüş yaşanmıştı (-%4.2). Bu yılki düşüş biraz daha sert.
 
 ### Aksiyon Önerileri
-1. 2 Ocak itibarıyla "Yeni Yıl Fırsatları" kampanyası başlatın.
-2. Corporate segment için Q1 bütçe dönemi teklifi hazırlayın.
+1. Kâr marjını sektör ortalamasına çekmek için indirim stratejisini gözden geçirin.
+2. Q1 bütçe dönemi için Corporate segmentine özel paket teklifleri hazırlayın.
 """
 
 
@@ -373,7 +398,7 @@ Geçmiş Rapor Bağlamı:
     ) -> str:
         """Template-based report generation without LLM."""
         type_label = REPORT_TYPE_LABELS.get(report_type, "Periyodik")
-        lines = [f"## {type_label} Satış Raporu — {start_date} / {end_date}", ""]
+        lines = [f"## {type_label} Tedarikçi Performans Raporu — {start_date} / {end_date}", ""]
 
         # Özet Göstergeler from raw_data weekly_summary
         summary = raw_data.get("weekly_summary", {})
@@ -449,6 +474,23 @@ Geçmiş Rapor Bağlamı:
                     lines.append(f"- {name}: ${sales} (pay: %{share})")
             lines.append("")
 
+        # Sector comparison
+        sector = analysis_results.get("sector_comparison", {})
+        if sector and "note" not in sector:
+            lines.append("### Sektör Karşılaştırması")
+            rank = sector.get("company_rank")
+            total = sector.get("total_in_sector")
+            if rank and total:
+                lines.append(f"- Sektör sıralaması: **{rank}/{total}** ({sector.get('sector_segment', '')} segmenti)")
+            avg = sector.get("sector_avg", {})
+            if avg:
+                lines.append(f"- Sektör ortalama gelir: ${avg.get('avg_revenue', 'N/A')}")
+                lines.append(f"- Sektör ortalama kâr marjı: %{avg.get('avg_margin_pct', 'N/A')}")
+            peers = sector.get("peers", [])
+            for p in peers[:3]:
+                lines.append(f"- {p.get('label', '?')}: ${p.get('total_revenue', 0):,.2f} gelir, %{p.get('profit_margin_pct', 0)} marj")
+            lines.append("")
+
         # Historical context
         if historical_context:
             lines.append("### Geçmiş Karşılaştırma")
@@ -461,7 +503,7 @@ Geçmiş Rapor Bağlamı:
         lines.append("### Aksiyon Önerileri")
         lines.append("1. Trend ve anomali bulgularına göre stok ve fiyatlandırma stratejisini gözden geçirin.")
         lines.append("2. Düşük performanslı kategorilerde kampanya planlaması yapın.")
-        lines.append("3. Müşteri segmentasyonuna göre hedefli pazarlama aksiyonları belirleyin.")
+        lines.append("3. Sektör karşılaştırmasına göre rekabetçi konumunuzu güçlendirin.")
         lines.append("")
 
         lines.append(f"*Rapor otomatik olarak oluşturulmuştur — {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC*")

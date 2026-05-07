@@ -95,6 +95,9 @@ class OrchestratorAgent:
         else:
             logger.info("Skipping RFM segmentation: no customer metrics available")
 
+        # Sector comparison — always include for supplier benchmarking
+        analysis_plan.append("sector_comparison")
+
         return analysis_plan
 
     # ── LLM-based planning ───────────────────────────────────────────────────
@@ -107,6 +110,7 @@ class OrchestratorAgent:
         "forecast",
         "decomposition",
         "rfm_segments",
+        "sector_comparison",
     ]
 
     LLM_SYSTEM_PROMPT = """Sen bir veri analisti koordinatörüsün.
@@ -120,14 +124,16 @@ MEVCUT ANALİZLER:
 - forecast: Gelecek tahminleri üretir (en az 14 günlük veri gerekir)
 - decomposition: Zaman serisi ayrıştırması yapar (en az 14 günlük veri gerekir)
 - rfm_segments: Müşteri segmentasyonu yapar (müşteri verisi gerekir)
+- sector_comparison: Sektör karşılaştırması yapar (tedarikçi benchmarking)
 
 KURALLAR:
 - trends, anomalies, period_comparison, category_performance her zaman çalıştırılmalı
 - forecast ve decomposition sadece yeterli veri varsa
 - rfm_segments sadece müşteri verisi varsa
+- sector_comparison her zaman çalıştırılmalı (tedarikçi kıyaslama)
 
 JSON YANIT FORMATI (sadece analiz listesi):
-["trends", "anomalies", "period_comparison", "category_performance", "forecast"]
+["trends", "anomalies", "period_comparison", "category_performance", "forecast", "sector_comparison"]
 """
 
     def _llm_plan(self, raw_data: dict[str, Any]) -> list[str] | None:

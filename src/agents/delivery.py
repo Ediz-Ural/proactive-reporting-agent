@@ -60,7 +60,7 @@ class DeliveryAgent:
 
         # 2. Try SMTP email
         if recipients:
-            subject = f"Satış Raporu — {start_date} / {end_date}"
+            subject = f"Tedarikçi Performans Raporu — {start_date} / {end_date}"
             email_result = self._send_email(
                 recipients=recipients,
                 subject=subject,
@@ -204,7 +204,7 @@ class DeliveryAgent:
         lines = report_content.strip().split("\n")
 
         parts = [
-            f"📊 *Satış Raporu*",
+            f"📊 *Tedarikçi Performans Raporu*",
             f"📅 {start_date} — {end_date}",
             "",
         ]
@@ -277,7 +277,7 @@ class DeliveryAgent:
         html_content = render_report(
             report_content,
             context={
-                "title": f"Satış Raporu — {start_date} / {end_date}",
+                "title": f"Tedarikçi Performans Raporu — {start_date} / {end_date}",
                 "period": f"{start_date} — {end_date}",
             },
         )
@@ -300,7 +300,7 @@ class DeliveryAgent:
         return render_report(
             report_markdown,
             context={
-                "title": f"Satış Raporu — {start_date} / {end_date}",
+                "title": f"Tedarikçi Performans Raporu — {start_date} / {end_date}",
                 "period": f"{start_date} — {end_date}",
             },
         )

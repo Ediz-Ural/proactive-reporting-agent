@@ -51,13 +51,13 @@ export default function Companies() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-gray-800">Sirketler</h2>
+        <h2 className="text-xl font-bold text-gray-800">Tedarikciler</h2>
         <button
           onClick={() => setShowForm(!showForm)}
           className="flex items-center gap-1.5 bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700"
         >
           <Plus size={16} />
-          Yeni Sirket
+          Yeni Tedarikci
         </button>
       </div>
 
@@ -137,7 +137,7 @@ export default function Companies() {
           </tbody>
         </table>
         {companies.length === 0 && (
-          <p className="text-center text-gray-500 py-8 text-sm">Henuz sirket yok</p>
+          <p className="text-center text-gray-500 py-8 text-sm">Henuz tedarikci yok</p>
         )}
       </div>
     </div>

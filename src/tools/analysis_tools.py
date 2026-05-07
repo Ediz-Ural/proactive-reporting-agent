@@ -606,6 +606,150 @@ def decompose_time_series(
 
 # ── RFM Segmentation ────────────────────────────────────────────────────────
 
+def calculate_sector_comparison(
+    company_id: int,
+    start_date: str,
+    end_date: str,
+) -> dict[str, Any]:
+    """
+    Compare a company's KPIs against anonymized sector peers (same segment).
+
+    Queries all companies sharing the same segment, calculates KPIs per company,
+    ranks the target company, and anonymizes peer names (Firma A, B, C...).
+
+    Args:
+        company_id: The target company to benchmark.
+        start_date: Period start date (ISO).
+        end_date: Period end date (ISO).
+
+    Returns:
+        Dict with keys: company_rank, total_in_sector, company_kpis,
+        sector_avg, peers (anonymized list), sector_segment.
+    """
+    from src.tools.sql_tools import execute_query
+
+    # Find the target company's segment
+    seg_df = execute_query(
+        """
+        SELECT c.id, c.name, c.segment
+        FROM companies c
+        WHERE c.id = :cid
+        """,
+        {"cid": company_id},
+    )
+    if seg_df.empty:
+        logger.warning("calculate_sector_comparison: company %d not found", company_id)
+        return {}
+
+    segment = seg_df.iloc[0]["segment"]
+
+    # Get all companies in same segment
+    peers_df = execute_query(
+        """
+        SELECT c.id, c.name
+        FROM companies c
+        WHERE c.segment = :segment AND c.is_active = 1
+        """,
+        {"segment": segment},
+    )
+    if peers_df.empty or len(peers_df) < 2:
+        logger.info("calculate_sector_comparison: not enough peers for segment '%s'", segment)
+        return {"note": f"Sektörde yeterli karşılaştırma firması yok ({segment})"}
+
+    peer_ids = peers_df["id"].tolist()
+
+    # Calculate KPIs for all companies in segment
+    placeholders = ", ".join(str(pid) for pid in peer_ids)
+    kpi_df = execute_query(
+        f"""
+        SELECT
+            company_id,
+            SUM(sales) as total_revenue,
+            SUM(profit) as total_profit,
+            COUNT(DISTINCT order_id) as total_orders,
+            COUNT(DISTINCT customer_id) as unique_customers
+        FROM orders
+        WHERE order_date BETWEEN :start AND :end
+          AND company_id IN ({placeholders})
+        GROUP BY company_id
+        """,
+        {"start": start_date, "end": end_date},
+    )
+
+    if kpi_df.empty:
+        return {"note": "Sektör verileri bulunamadı"}
+
+    for col in ["total_revenue", "total_profit"]:
+        kpi_df[col] = pd.to_numeric(kpi_df[col], errors="coerce").fillna(0)
+    kpi_df["profit_margin_pct"] = np.where(
+        kpi_df["total_revenue"] > 0,
+        (kpi_df["total_profit"] / kpi_df["total_revenue"] * 100).round(2),
+        0.0,
+    )
+    kpi_df["avg_order_value"] = np.where(
+        kpi_df["total_orders"] > 0,
+        (kpi_df["total_revenue"] / kpi_df["total_orders"]).round(2),
+        0.0,
+    )
+
+    # Rank by revenue
+    kpi_df = kpi_df.sort_values("total_revenue", ascending=False).reset_index(drop=True)
+    kpi_df["rank"] = range(1, len(kpi_df) + 1)
+
+    # Extract target company KPIs
+    target_row = kpi_df[kpi_df["company_id"] == company_id]
+    if target_row.empty:
+        company_kpis = {"note": "Bu dönemde firma verisi yok"}
+        company_rank = None
+    else:
+        row = target_row.iloc[0]
+        company_kpis = {
+            "total_revenue": round(float(row["total_revenue"]), 2),
+            "total_profit": round(float(row["total_profit"]), 2),
+            "total_orders": int(row["total_orders"]),
+            "unique_customers": int(row["unique_customers"]),
+            "profit_margin_pct": round(float(row["profit_margin_pct"]), 2),
+            "avg_order_value": round(float(row["avg_order_value"]), 2),
+        }
+        company_rank = int(row["rank"])
+
+    # Sector averages
+    sector_avg = {
+        "avg_revenue": round(float(kpi_df["total_revenue"].mean()), 2),
+        "avg_profit": round(float(kpi_df["total_profit"].mean()), 2),
+        "avg_orders": round(float(kpi_df["total_orders"].mean()), 1),
+        "avg_margin_pct": round(float(kpi_df["profit_margin_pct"].mean()), 2),
+    }
+
+    # Anonymized peers (exclude target company)
+    peer_rows = kpi_df[kpi_df["company_id"] != company_id]
+    labels = iter("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+    peers = []
+    for _, pr in peer_rows.iterrows():
+        peers.append({
+            "label": f"Firma {next(labels)}",
+            "total_revenue": round(float(pr["total_revenue"]), 2),
+            "total_profit": round(float(pr["total_profit"]), 2),
+            "total_orders": int(pr["total_orders"]),
+            "profit_margin_pct": round(float(pr["profit_margin_pct"]), 2),
+            "rank": int(pr["rank"]),
+        })
+
+    logger.info(
+        "Sector comparison: company %d ranked %s/%d in segment '%s'",
+        company_id, company_rank, len(kpi_df), segment,
+    )
+
+    return {
+        "sector_segment": segment,
+        "company_rank": company_rank,
+        "total_in_sector": len(kpi_df),
+        "company_kpis": company_kpis,
+        "sector_avg": sector_avg,
+        "peers": peers,
+    }
+
+
 def calculate_rfm_segments(
     df: pd.DataFrame,
     customer_col: str = "customer_id",
