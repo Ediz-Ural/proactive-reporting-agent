@@ -43,9 +43,20 @@ export default function Pipeline() {
         company_id: companyId,
       });
       setResult(res.data);
-      setPipelineStatus('completed');
+      if (res.data.status === 'quality_failed') {
+        setError(res.data.errors?.join(', ') || 'Kalite kontrolu basarisiz');
+        setPipelineStatus('error');
+      } else {
+        setPipelineStatus('completed');
+      }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Pipeline hatasi';
+      let message = 'Pipeline hatasi';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axErr = err as { response?: { data?: { detail?: string } } };
+        message = axErr.response?.data?.detail || message;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
       setError(message);
       setPipelineStatus('error');
     } finally {

@@ -272,15 +272,22 @@ async def run_pipeline_sync(
         company_id=cid,
     )
 
+    qr = state.get("quality_report") or {}
+    quality_failed = not qr.get("is_valid", True) and qr.get("errors")
+
+    errors = state.get("errors", [])
+    if quality_failed:
+        errors = list(errors) + [f"Kalite kontrolu basarisiz: {e}" for e in qr["errors"]]
+
     return {
         "run_id": state.get("run_id"),
-        "status": "completed",
+        "status": "quality_failed" if quality_failed else "completed",
         "weekly_summary": (state.get("raw_data") or {}).get("weekly_summary", {}),
         "analysis_results": state.get("analysis_results", {}),
         "draft_report": state.get("draft_report", ""),
         "evaluation": state.get("evaluation", {}),
         "delivery_status": state.get("delivery_status", {}),
-        "errors": state.get("errors", []),
+        "errors": errors,
     }
 
 
