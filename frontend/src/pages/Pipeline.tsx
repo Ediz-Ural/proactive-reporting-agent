@@ -6,22 +6,26 @@ import { EvaluatorRadar } from '../components/AnalysisCharts';
 import { runPipeline, runMonthly, getCompanies } from '../api/client';
 import type { PipelineResult } from '../types';
 
-function getLastDayOfMonth(year: number, month: number): string {
-  const d = new Date(year, month, 0);
-  return d.toISOString().slice(0, 10);
-}
-
 function computeDateRange(start: string, type: string): { start: string; end: string } {
-  const [y, m] = start.split('-').map(Number);
-  if (type === 'quarterly') {
-    const qEnd = new Date(y, m + 2, 0);
-    return { start, end: qEnd.toISOString().slice(0, 10) };
+  const parts = start.split('-').map(Number);
+  const y = parts[0], m = parts[1], d = parts[2];
+  if (!y || !m || !d || isNaN(y) || isNaN(m) || isNaN(d)) {
+    return { start, end: start };
   }
-  if (type === 'weekly') {
-    const d = new Date(y, m - 1, Number(start.split('-')[2]) + 6);
-    return { start, end: d.toISOString().slice(0, 10) };
+  try {
+    if (type === 'quarterly') {
+      const qEnd = new Date(y, m + 2, 0);
+      return { start, end: qEnd.toISOString().slice(0, 10) };
+    }
+    if (type === 'weekly') {
+      const wEnd = new Date(y, m - 1, d + 6);
+      return { start, end: wEnd.toISOString().slice(0, 10) };
+    }
+    const mEnd = new Date(y, m, 0);
+    return { start, end: mEnd.toISOString().slice(0, 10) };
+  } catch {
+    return { start, end: start };
   }
-  return { start, end: getLastDayOfMonth(y, m) };
 }
 
 export default function Pipeline() {
