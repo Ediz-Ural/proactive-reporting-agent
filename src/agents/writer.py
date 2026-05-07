@@ -72,6 +72,8 @@ KURALLAR:
 - Para birimi USD ($) kullan — TL değil
 - KAYNAK VERİ bloğunda "karşılaştırma YAPILAMAZ" yazıyorsa: Özet göstergelerde yüzde değişim YAZMA, "önceki döneme göre" ifadesi KULLANMA, sadece mutlak rakamları yaz
 - Trend analizindeki iç-dönem değişimleri (ay içi düşüş/artış) ile dönemler-arası karşılaştırmayı KARIŞTIRMA
+- Trend verisinde "note" alanı varsa ve "yeterli veri yok" diyorsa, o analizi KULLANMA
+- Seyrek verili dönemlerde (az sipariş, az gün) büyük yüzdelik değişimler YANILTICI olabilir — bunları "keskin düşüş/artış" diye sunma, veri azlığını belirt
 """
 
 # ── Few-shot example reports ─────────────────────────────────────────────────

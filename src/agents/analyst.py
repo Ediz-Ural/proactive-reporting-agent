@@ -84,12 +84,20 @@ class AnalystAgent:
 
         # ── 1. Trend analysis ────────────────────────────────────────────────
         if "trends" in analysis_plan:
-            results["trends"], ok = self._run_trends(daily_sales)
+            if total_rows >= 7:
+                results["trends"], ok = self._run_trends(daily_sales)
+            else:
+                results["trends"] = {"note": f"Trend analizi için yeterli veri yok ({total_rows} gün). En az 7 gün gerekli."}
+                ok = True
             (completed if ok else failed).append("trends")
 
         # ── 2. Anomaly detection ─────────────────────────────────────────────
         if "anomalies" in analysis_plan:
-            results["anomalies"], ok = self._run_anomalies(daily_sales)
+            if total_rows >= 7:
+                results["anomalies"], ok = self._run_anomalies(daily_sales)
+            else:
+                results["anomalies"] = []
+                ok = True
             (completed if ok else failed).append("anomalies")
 
         # ── 3. Period comparison ─────────────────────────────────────────────
