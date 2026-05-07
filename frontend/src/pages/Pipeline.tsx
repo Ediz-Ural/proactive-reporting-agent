@@ -6,9 +6,26 @@ import { EvaluatorRadar } from '../components/AnalysisCharts';
 import { runPipeline, runMonthly, getCompanies } from '../api/client';
 import type { PipelineResult } from '../types';
 
+function getLastDayOfMonth(year: number, month: number): string {
+  const d = new Date(year, month, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+function computeDateRange(start: string, type: string): { start: string; end: string } {
+  const [y, m] = start.split('-').map(Number);
+  if (type === 'quarterly') {
+    const qEnd = new Date(y, m + 2, 0);
+    return { start, end: qEnd.toISOString().slice(0, 10) };
+  }
+  if (type === 'weekly') {
+    const d = new Date(y, m - 1, Number(start.split('-')[2]) + 6);
+    return { start, end: d.toISOString().slice(0, 10) };
+  }
+  return { start, end: getLastDayOfMonth(y, m) };
+}
+
 export default function Pipeline() {
   const [startDate, setStartDate] = useState('2017-01-01');
-  const [endDate, setEndDate] = useState('2017-01-31');
   const [reportType, setReportType] = useState('monthly');
   const [companyId, setCompanyId] = useState<number>(1);
   const [companies, setCompanies] = useState<Array<{ id: number; name: string }>>([]);
@@ -16,6 +33,8 @@ export default function Pipeline() {
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
+
+  const { start: computedStart, end: computedEnd } = computeDateRange(startDate, reportType);
 
   useEffect(() => {
     async function loadCompanies() {
@@ -37,8 +56,8 @@ export default function Pipeline() {
 
     try {
       const res = await runPipeline({
-        start_date: startDate,
-        end_date: endDate,
+        start_date: computedStart,
+        end_date: computedEnd,
         report_type: reportType,
         company_id: companyId,
       });
@@ -90,7 +109,7 @@ export default function Pipeline() {
       {/* Input Form */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
         <h3 className="text-sm font-semibold text-gray-700 mb-4">Rapor Uret</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">
               <Building2 size={12} className="inline mr-1" />
@@ -114,15 +133,9 @@ export default function Pipeline() {
               onChange={(e) => setStartDate(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Bitis Tarihi</label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <p className="text-xs text-gray-400 mt-1">
+              Donem: {computedStart} &mdash; {computedEnd}
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Rapor Tipi</label>
