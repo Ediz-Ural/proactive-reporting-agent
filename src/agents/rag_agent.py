@@ -154,7 +154,7 @@ class RAGAgent:
 
         # 4. Period comparison — significant change
         comparison = analysis_results.get("period_comparison", {})
-        sales_change = comparison.get("total_sales_change_pct", 0)
+        sales_change = comparison.get("total_sales_change_pct") or 0
         if abs(sales_change) > 20:
             change_label = "düşüş gerileme" if sales_change < 0 else "artış büyüme"
             queries.append(f"satış {change_label} önceki dönem karşılaştırma")

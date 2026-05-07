@@ -203,6 +203,8 @@ def calculate_period_comparison(
 
     comparison: dict[str, float] = {}
     prev_rows = len(previous_df)
+    insufficient = prev_rows < 3
+
     for col in cols:
         curr_val = _sum(current_df, col)
         prev_val = _sum(previous_df, col)
@@ -210,12 +212,16 @@ def calculate_period_comparison(
             pct = 100.0 if curr_val > 0 else 0.0
         else:
             pct = (curr_val - prev_val) / abs(prev_val) * 100
-        comparison[f"{col}_change_pct"] = round(pct, 2)
+
+        if abs(pct) > 500:
+            comparison[f"{col}_change_pct"] = None  # type: ignore[assignment]
+        else:
+            comparison[f"{col}_change_pct"] = round(pct, 2)
         comparison[f"{col}_current"] = round(curr_val, 2)
         comparison[f"{col}_previous"] = round(prev_val, 2)
 
     comparison["previous_period_rows"] = prev_rows
-    if prev_rows < 3:
+    if insufficient:
         comparison["insufficient_previous_data"] = True
 
     return comparison

@@ -70,7 +70,8 @@ KURALLAR:
 - customer_metrics listesindeki segment bazlı unique_customers değerlerini TOPLAMA — KAYNAK VERİ'deki unique_customers zaten toplam sayıdır
 - Herhangi bir rakamı "yaklaşık", "civarında" gibi ifadelerle değiştirme
 - Para birimi USD ($) kullan — TL değil
-- Önceki döneme göre % değişim ±%500'den büyükse, yüzdeyi yazmak yerine "önceki dönemde yeterli veri yok" yaz
+- KAYNAK VERİ bloğunda "karşılaştırma YAPILAMAZ" yazıyorsa: Özet göstergelerde yüzde değişim YAZMA, "önceki döneme göre" ifadesi KULLANMA, sadece mutlak rakamları yaz
+- Trend analizindeki iç-dönem değişimleri (ay içi düşüş/artış) ile dönemler-arası karşılaştırmayı KARIŞTIRMA
 """
 
 # ── Few-shot example reports ─────────────────────────────────────────────────
@@ -220,9 +221,21 @@ Lütfen yukarıdaki geri bildirimi dikkate alarak raporu yeniden yaz.
 """
 
         # Extract summary block so LLM sees exact figures up front
-        summary_block = self._build_summary_block(raw_data)
+        summary_block = self._build_summary_block(raw_data, analysis_results)
 
-        analysis_json = self._truncate_analysis(analysis_results)
+        # Strip period_comparison with None pcts so LLM doesn't misinterpret
+        clean_results = dict(analysis_results)
+        pc = clean_results.get("period_comparison", {})
+        if pc and pc.get("insufficient_previous_data"):
+            clean_results["period_comparison"] = {
+                "note": "Önceki dönemde yeterli veri yok — karşılaştırma yapılamaz."
+            }
+        elif pc:
+            clean_results["period_comparison"] = {
+                k: v for k, v in pc.items() if v is not None
+            }
+
+        analysis_json = self._truncate_analysis(clean_results)
         hist = historical_context or "Geçmiş rapor verisi bulunmamaktadır."
 
         if self.strategy == "zero_shot":
@@ -298,7 +311,7 @@ Geçmiş Rapor Bağlamı:
     # ── Summary block ──────────────────────────────────────────────────────
 
     @staticmethod
-    def _build_summary_block(raw_data: dict[str, Any]) -> str:
+    def _build_summary_block(raw_data: dict[str, Any], analysis_results: dict[str, Any] | None = None) -> str:
         """Build an explicit source-of-truth block from weekly_summary.
 
         Placed at the top of the prompt so the LLM uses these exact figures
@@ -308,7 +321,11 @@ Geçmiş Rapor Bağlamı:
         summary = raw_data.get("weekly_summary", {})
         if not summary:
             return ""
-        return (
+
+        comparison = (analysis_results or {}).get("period_comparison", {})
+        has_comparison = comparison and not comparison.get("insufficient_previous_data")
+
+        block = (
             "KAYNAK VERİ — ÖZET GÖSTERGELER (Bu rakamları AYNEN kullan):\n"
             f"- Toplam gelir: ${summary.get('total_revenue', 'N/A')}\n"
             f"- Toplam kâr: ${summary.get('total_profit', 'N/A')}\n"
@@ -317,6 +334,22 @@ Geçmiş Rapor Bağlamı:
             f"- Benzersiz müşteri: {summary.get('unique_customers', 'N/A')}\n"
             f"- Kâr marjı: %{summary.get('profit_margin_pct', 'N/A')}\n"
         )
+
+        if has_comparison:
+            pct_sales = comparison.get("total_sales_change_pct")
+            pct_profit = comparison.get("total_profit_change_pct")
+            pct_orders = comparison.get("total_orders_change_pct")
+            if pct_sales is not None:
+                block += f"\nÖNCEKİ DÖNEM KARŞILAŞTIRMASI:\n"
+                block += f"- Gelir değişimi: %{pct_sales:+.1f}\n"
+                if pct_profit is not None:
+                    block += f"- Kâr değişimi: %{pct_profit:+.1f}\n"
+                if pct_orders is not None:
+                    block += f"- Sipariş değişimi: %{pct_orders:+.1f}\n"
+        else:
+            block += "\nÖNCEKİ DÖNEM KARŞILAŞTIRMASI: Önceki dönemde yeterli veri bulunmadığından karşılaştırma YAPILAMAZ. Özet göstergelerin yanına yüzde değişim YAZMA.\n"
+
+        return block
 
     # ── LLM call ─────────────────────────────────────────────────────────────
 
