@@ -6,6 +6,13 @@ import { EvaluatorRadar } from '../components/AnalysisCharts';
 import { runPipeline, runMonthly, getCompanies } from '../api/client';
 import type { PipelineResult } from '../types';
 
+function formatLocalDate(d: Date): string {
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yy}-${mm}-${dd}`;
+}
+
 function computeDateRange(start: string, type: string): { start: string; end: string } {
   const parts = start.split('-').map(Number);
   const y = parts[0], m = parts[1], d = parts[2];
@@ -14,15 +21,12 @@ function computeDateRange(start: string, type: string): { start: string; end: st
   }
   try {
     if (type === 'quarterly') {
-      const qEnd = new Date(y, m + 2, 0);
-      return { start, end: qEnd.toISOString().slice(0, 10) };
+      return { start, end: formatLocalDate(new Date(y, m + 2, 0)) };
     }
     if (type === 'weekly') {
-      const wEnd = new Date(y, m - 1, d + 6);
-      return { start, end: wEnd.toISOString().slice(0, 10) };
+      return { start, end: formatLocalDate(new Date(y, m - 1, d + 6)) };
     }
-    const mEnd = new Date(y, m, 0);
-    return { start, end: mEnd.toISOString().slice(0, 10) };
+    return { start, end: formatLocalDate(new Date(y, m, 0)) };
   } catch {
     return { start, end: start };
   }
