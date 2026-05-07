@@ -71,9 +71,13 @@ KURALLAR:
 - Herhangi bir rakamı "yaklaşık", "civarında" gibi ifadelerle değiştirme
 - Para birimi USD ($) kullan — TL değil
 - KAYNAK VERİ bloğunda "karşılaştırma YAPILAMAZ" yazıyorsa: Özet göstergelerde yüzde değişim YAZMA, "önceki döneme göre" ifadesi KULLANMA, sadece mutlak rakamları yaz
-- Trend analizindeki iç-dönem değişimleri (ay içi düşüş/artış) ile dönemler-arası karşılaştırmayı KARIŞTIRMA
 - Trend verisinde "note" alanı varsa ve "yeterli veri yok" diyorsa, o analizi KULLANMA
 - Seyrek verili dönemlerde (az sipariş, az gün) büyük yüzdelik değişimler YANILTICI olabilir — bunları "keskin düşüş/artış" diye sunma, veri azlığını belirt
+
+VERİ KAYNAKLARI — KARIŞTIRMA:
+- "trends_AY_ICI_GUNLUK_VERI": Ay İÇİNDEKİ günlük satış verileri. Bu veriler aynı dönem içindeki gün-gün değişimleri gösterir. Bunları ASLA "önceki dönem" ile karşılaştırma olarak KULLANMA.
+- "period_comparison": DÖNEMLER ARASI karşılaştırma (bu ay vs önceki ay). Sadece bu veriyi dönem karşılaştırması için kullan.
+- ASLA ay-içi günlük verilerdeki ilk gün / son gün değerlerini "dönem geliri düştü/arttı" şeklinde YORUMLAMA. Dönem toplam geliri KAYNAK VERİ bloğundadır.
 """
 
 # ── Few-shot example reports ─────────────────────────────────────────────────
@@ -225,17 +229,8 @@ Lütfen yukarıdaki geri bildirimi dikkate alarak raporu yeniden yaz.
         # Extract summary block so LLM sees exact figures up front
         summary_block = self._build_summary_block(raw_data, analysis_results)
 
-        # Strip period_comparison with None pcts so LLM doesn't misinterpret
-        clean_results = dict(analysis_results)
-        pc = clean_results.get("period_comparison", {})
-        if pc and pc.get("insufficient_previous_data"):
-            clean_results["period_comparison"] = {
-                "note": "Önceki dönemde yeterli veri yok — karşılaştırma yapılamaz."
-            }
-        elif pc:
-            clean_results["period_comparison"] = {
-                k: v for k, v in pc.items() if v is not None
-            }
+        # Sanitize analysis results so LLM can't confuse data sources
+        clean_results = self._sanitize_for_llm(analysis_results)
 
         analysis_json = self._truncate_analysis(clean_results)
         hist = historical_context or "Geçmiş rapor verisi bulunmamaktadır."
@@ -474,6 +469,52 @@ Geçmiş Rapor Bağlamı:
         return "\n".join(lines)
 
     # ── Helpers ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _sanitize_for_llm(analysis_results: dict[str, Any]) -> dict[str, Any]:
+        """Restructure analysis results so the LLM cannot confuse data sources.
+
+        Key transforms:
+        - Trend: rename first_value/last_value to explicit day-level labels,
+          remove raw growth_rate_pct (LLM confuses with period comparison)
+        - Period comparison: strip when insufficient, remove None pcts
+        """
+        clean = dict(analysis_results)
+
+        # ── Trends: rename ambiguous fields ──
+        trends = clean.get("trends")
+        if isinstance(trends, dict) and trends and "note" not in trends:
+            renamed_trends: dict[str, Any] = {}
+            for metric, data in trends.items():
+                if not isinstance(data, dict):
+                    renamed_trends[metric] = data
+                    continue
+                t: dict[str, Any] = {
+                    "metric": data.get("metric", metric),
+                    "ay_ici_trend_yonu": data.get("direction", "stable"),
+                    "ay_ici_ortalama": data.get("mean_value"),
+                    "ay_ici_min_gunluk": data.get("min_value"),
+                    "ay_ici_max_gunluk": data.get("max_value"),
+                }
+                for k, v in data.items():
+                    if k.startswith("sma_") and v is not None:
+                        t[k] = v
+                renamed_trends[metric] = t
+            clean["trends_AY_ICI_GUNLUK_VERI"] = renamed_trends
+            del clean["trends"]
+
+        # ── Period comparison: strip misleading data ──
+        pc = clean.get("period_comparison", {})
+        if pc and pc.get("insufficient_previous_data"):
+            clean["period_comparison"] = {
+                "note": "Önceki dönemde yeterli veri yok — karşılaştırma yapılamaz."
+            }
+        elif pc:
+            clean["period_comparison"] = {
+                k: v for k, v in pc.items() if v is not None
+            }
+
+        return clean
 
     @staticmethod
     def _truncate_analysis(analysis_results: dict, max_chars: int = 8000) -> str:
