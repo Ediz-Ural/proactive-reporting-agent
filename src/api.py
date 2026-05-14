@@ -376,34 +376,54 @@ async def get_run_detail(
 # ── Reports endpoints ─────────────────────────────────────────────────────────
 
 @app.get("/reports")
-async def list_reports(current_user: TokenData = Depends(get_current_user)):
-    """List report files for current user's company."""
-    reports_dir = Path(f"data/reports/{current_user.company_id}")
-    if not reports_dir.exists():
-        return {"reports": []}
+async def list_reports(
+    company_id: int | None = None,
+    current_user: TokenData = Depends(get_current_user),
+):
+    """List report files. Admin can filter by company_id or see all; users see own."""
+    is_admin = current_user.role == "admin"
+
+    if is_admin and company_id is None:
+        company_dirs = sorted(Path("data/reports").iterdir()) if Path("data/reports").exists() else []
+        company_dirs = [d for d in company_dirs if d.is_dir() and d.name.isdigit()]
+    elif is_admin and company_id is not None:
+        company_dirs = [Path(f"data/reports/{company_id}")]
+    else:
+        company_dirs = [Path(f"data/reports/{current_user.company_id}")]
 
     reports = []
-    for f in sorted(reports_dir.glob("*.md"), reverse=True):
-        html_file = f.with_suffix(".html")
-        reports.append({
-            "filename": f.name,
-            "created_at": f.stat().st_mtime,
-            "size_bytes": f.stat().st_size,
-            "has_html": html_file.exists(),
-        })
+    for cdir in company_dirs:
+        if not cdir.exists():
+            continue
+        cid = int(cdir.name)
+        for f in sorted(cdir.glob("*.md"), reverse=True):
+            html_file = f.with_suffix(".html")
+            reports.append({
+                "filename": f.name,
+                "company_id": cid,
+                "created_at": f.stat().st_mtime,
+                "size_bytes": f.stat().st_size,
+                "has_html": html_file.exists(),
+            })
+
+    reports.sort(key=lambda r: r["created_at"], reverse=True)
     return {"reports": reports}
 
 
 @app.get("/reports/{filename}")
 async def get_report(
     filename: str,
+    company_id: int | None = None,
     current_user: TokenData = Depends(get_current_user),
 ):
     """Return the content of a specific report file."""
     if ".." in filename or "/" in filename:
         raise HTTPException(status_code=400, detail="Invalid filename")
 
-    md_path = Path(f"data/reports/{current_user.company_id}") / filename
+    is_admin = current_user.role == "admin"
+    cid = company_id if (is_admin and company_id) else current_user.company_id
+
+    md_path = Path(f"data/reports/{cid}") / filename
     if not md_path.exists():
         raise HTTPException(status_code=404, detail="Report not found")
 
@@ -413,6 +433,7 @@ async def get_report(
 
     return {
         "filename": filename,
+        "company_id": cid,
         "content_md": content,
         "content_html": html_content,
     }

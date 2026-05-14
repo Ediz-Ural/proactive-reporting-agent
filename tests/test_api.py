@@ -292,27 +292,51 @@ class TestReportsEndpoint:
     """Tests for GET /reports."""
 
     def test_reports_list(self, client, auth_headers, tmp_path):
-        """GET /reports returns file list."""
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-        (reports_dir / "report_a.md").write_text("# A")
-        (reports_dir / "report_b.md").write_text("# B")
-        (reports_dir / "report_b.html").write_text("<h1>B</h1>")
+        """GET /reports returns file list for admin (all companies)."""
+        base = tmp_path / "reports"
+        (base / "1").mkdir(parents=True)
+        (base / "1" / "report_a.md").write_text("# A")
+        (base / "1" / "report_b.md").write_text("# B")
+        (base / "1" / "report_b.html").write_text("<h1>B</h1>")
 
-        with patch("src.api.Path") as mock_path_cls:
-            mock_path_cls.side_effect = lambda p: reports_dir if "data/reports" in str(p) else Path(p)
+        with patch("src.api.Path", side_effect=lambda p: base if p == "data/reports" else Path(p)):
             response = client.get("/reports", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert len(data["reports"]) == 2
+        assert all("company_id" in r for r in data["reports"])
 
-    def test_reports_empty_dir(self, client, auth_headers):
-        """GET /reports returns empty list when dir doesn't exist."""
-        with patch("src.api.Path") as mock_path_cls:
-            mock_dir = MagicMock()
-            mock_dir.exists.return_value = False
-            mock_path_cls.side_effect = lambda p: mock_dir if "data/reports" in str(p) else Path(p)
+    def test_reports_filter_by_company(self, client, auth_headers, tmp_path):
+        """GET /reports?company_id=2 returns only that company's reports."""
+        base = tmp_path / "reports"
+        (base / "1").mkdir(parents=True)
+        (base / "2").mkdir(parents=True)
+        (base / "1" / "r1.md").write_text("# 1")
+        (base / "2" / "r2.md").write_text("# 2")
+
+        def mock_path(p):
+            if p == "data/reports":
+                return base
+            if "data/reports/" in p:
+                cid = p.split("/")[-1]
+                return base / cid
+            return Path(p)
+
+        with patch("src.api.Path", side_effect=mock_path):
+            response = client.get("/reports?company_id=2", headers=auth_headers)
+
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["reports"]) == 1
+        assert data["reports"][0]["company_id"] == 2
+
+    def test_reports_empty_dir(self, client, auth_headers, tmp_path):
+        """GET /reports returns empty list when no reports exist."""
+        base = tmp_path / "empty_reports"
+        base.mkdir()
+
+        with patch("src.api.Path", side_effect=lambda p: base if p == "data/reports" else Path(p)):
             response = client.get("/reports", headers=auth_headers)
 
         assert response.status_code == 200

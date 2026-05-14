@@ -79,6 +79,7 @@ export interface DailySales {
 
 export interface ReportFile {
   filename: string;
+  company_id: number;
   created_at: number;
   size_bytes: number;
   has_html: boolean;

@@ -80,15 +80,20 @@ export const getRunDetail = (runId: string) =>
 
 // ── Reports ─────────────────────────────────────────────────────────────────
 
-export const getReports = () =>
-  api.get<{ reports: ReportFile[] }>('/reports');
+export const getReports = (companyId?: number) =>
+  api.get<{ reports: ReportFile[] }>('/reports', {
+    params: companyId ? { company_id: companyId } : undefined,
+  });
 
-export const getReport = (filename: string) =>
+export const getReport = (filename: string, companyId?: number) =>
   api.get<{
     filename: string;
+    company_id: number;
     content_md: string;
     content_html: string | null;
-  }>(`/reports/${filename}`);
+  }>(`/reports/${filename}`, {
+    params: companyId ? { company_id: companyId } : undefined,
+  });
 
 // ── Stats ───────────────────────────────────────────────────────────────────
 
