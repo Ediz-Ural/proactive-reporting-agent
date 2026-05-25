@@ -154,7 +154,7 @@ export const getCompanyStats = () =>
 export const getCompanies = () =>
   api.get<{ companies: Array<Record<string, unknown>> }>('/admin/companies');
 
-export const createCompany = (data: { name: string; slug: string; email_domain?: string }) =>
+export const createCompany = (data: { name: string; slug: string; email_domain?: string; segment: string }) =>
   api.post('/admin/companies', data);
 
 export const getUsers = () =>

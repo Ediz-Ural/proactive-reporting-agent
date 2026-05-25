@@ -6,6 +6,7 @@ interface Company {
   id: number;
   name: string;
   slug: string;
+  segment: string;
   email_domain: string;
   created_at: string;
   is_active: boolean | number;
@@ -17,6 +18,7 @@ export default function Companies() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [emailDomain, setEmailDomain] = useState('');
+  const [segment, setSegment] = useState('Consumer');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -34,10 +36,11 @@ export default function Companies() {
     setError('');
 
     try {
-      await createCompany({ name, slug, email_domain: emailDomain });
+      await createCompany({ name, slug, email_domain: emailDomain, segment });
       setName('');
       setSlug('');
       setEmailDomain('');
+      setSegment('Consumer');
       setShowForm(false);
       fetchCompanies();
     } catch (err: unknown) {
@@ -84,6 +87,19 @@ export default function Companies() {
               />
             </div>
             <div>
+              <label className="block text-sm font-medium text-gray-700">Segment</label>
+              <select
+                value={segment}
+                onChange={e => setSegment(e.target.value)}
+                className="w-full border rounded px-3 py-1.5 text-sm mt-1 bg-white"
+                required
+              >
+                <option value="Consumer">Consumer</option>
+                <option value="Corporate">Corporate</option>
+                <option value="Home Office">Home Office</option>
+              </select>
+            </div>
+            <div>
               <label className="block text-sm font-medium text-gray-700">Email Domain</label>
               <input
                 value={emailDomain}
@@ -111,6 +127,7 @@ export default function Companies() {
               <th className="text-left px-4 py-3 font-medium text-gray-600">ID</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Ad</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Slug</th>
+              <th className="text-left px-4 py-3 font-medium text-gray-600">Segment</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Email Domain</th>
               <th className="text-left px-4 py-3 font-medium text-gray-600">Durum</th>
             </tr>
@@ -124,6 +141,15 @@ export default function Companies() {
                   {c.name}
                 </td>
                 <td className="px-4 py-3 text-gray-600">{c.slug}</td>
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-0.5 rounded text-xs ${
+                    c.segment === 'Corporate' ? 'bg-purple-100 text-purple-700' :
+                    c.segment === 'Home Office' ? 'bg-orange-100 text-orange-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                    {c.segment || '-'}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-gray-600">{c.email_domain || '-'}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded text-xs ${

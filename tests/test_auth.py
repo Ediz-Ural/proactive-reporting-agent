@@ -32,6 +32,7 @@ def test_engine():
                 name VARCHAR(200) NOT NULL UNIQUE,
                 slug VARCHAR(100) NOT NULL UNIQUE,
                 email_domain VARCHAR(200),
+                segment VARCHAR(30),
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 is_active BOOLEAN DEFAULT 1
             )
@@ -78,12 +79,12 @@ def test_engine():
 
         # Seed companies
         conn.execute(text("""
-            INSERT INTO companies (id, name, slug, email_domain)
-            VALUES (1, 'Company A', 'company-a', 'a.com')
+            INSERT INTO companies (id, name, slug, email_domain, segment)
+            VALUES (1, 'Company A', 'company-a', 'a.com', 'Consumer')
         """))
         conn.execute(text("""
-            INSERT INTO companies (id, name, slug, email_domain)
-            VALUES (2, 'Company B', 'company-b', 'b.com')
+            INSERT INTO companies (id, name, slug, email_domain, segment)
+            VALUES (2, 'Company B', 'company-b', 'b.com', 'Corporate')
         """))
 
         # Seed users
@@ -408,6 +409,7 @@ class TestAdminCompanies:
             "name": "New Corp",
             "slug": "new-corp",
             "email_domain": "newcorp.com",
+            "segment": "Consumer",
         })
         assert response.status_code == 200
         assert "New Corp" in response.json()["message"]
@@ -417,6 +419,7 @@ class TestAdminCompanies:
             "name": "Another A",
             "slug": "company-a",
             "email_domain": "",
+            "segment": "Consumer",
         })
         assert response.status_code == 400
 
@@ -503,7 +506,7 @@ class TestDbSync:
     def test_admin_created_company_auto_increment(self, client, admin_headers):
         """Company created via API gets next auto-increment id after existing max."""
         response = client.post("/admin/companies", headers=admin_headers, json={
-            "name": "API Created Co.", "slug": "api-created", "email_domain": "apicreated.com",
+            "name": "API Created Co.", "slug": "api-created", "email_domain": "apicreated.com", "segment": "Corporate",
         })
         assert response.status_code == 200
 

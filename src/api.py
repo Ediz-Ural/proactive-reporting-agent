@@ -89,6 +89,7 @@ class CompanyCreate(BaseModel):
     name: str
     slug: str
     email_domain: str = ""
+    segment: str
 
 
 class AdminReportRequest(BaseModel):
@@ -606,9 +607,9 @@ async def create_company(
             raise HTTPException(400, f"Company with slug '{req.slug}' already exists")
 
         conn.execute(text("""
-            INSERT INTO companies (name, slug, email_domain)
-            VALUES (:name, :slug, :domain)
-        """), {"name": req.name, "slug": req.slug, "domain": req.email_domain})
+            INSERT INTO companies (name, slug, email_domain, segment)
+            VALUES (:name, :slug, :domain, :segment)
+        """), {"name": req.name, "slug": req.slug, "domain": req.email_domain, "segment": req.segment})
 
     return {"message": f"Company '{req.name}' created"}
 
