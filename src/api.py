@@ -99,6 +99,12 @@ class AdminReportRequest(BaseModel):
     recipients: list[str] = []
 
 
+class SendExistingReportRequest(BaseModel):
+    report_filename: str
+    company_id: int
+    recipients: list[str] = []
+
+
 # ── Helper: read JSONL runs ──────────────────────────────────────────────────
 
 METRICS_PATH = Path("data/metrics/pipeline_runs.jsonl")
@@ -653,4 +659,61 @@ async def admin_send_report(
         "recipients": req.recipients,
         "quality_score": (state.get("evaluation") or {}).get("overall_score"),
         "delivery_status": state.get("delivery_status"),
+    }
+
+
+@app.post("/admin/send-existing-report")
+async def send_existing_report(
+    req: SendExistingReportRequest,
+    admin: TokenData = Depends(require_admin),
+):
+    """Send an already-generated report via email without re-running the pipeline."""
+    from src.agents.delivery import DeliveryAgent
+    from src.tools.sql_tools import get_db_engine
+
+    if ".." in req.report_filename or "/" in req.report_filename:
+        raise HTTPException(400, "Invalid filename")
+
+    reports_dir = Path(f"data/reports/{req.company_id}")
+    md_path = reports_dir / req.report_filename
+    html_path = reports_dir / req.report_filename.replace(".md", ".html")
+
+    if not md_path.exists() and not html_path.exists():
+        raise HTTPException(404, f"Report not found: {req.report_filename}")
+
+    report_content = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
+    html_content = html_path.read_text(encoding="utf-8") if html_path.exists() else ""
+
+    recipients = req.recipients
+    if not recipients:
+        engine = get_db_engine()
+        with engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT email FROM users WHERE company_id = :cid AND is_active = 1"),
+                {"cid": req.company_id},
+            )
+            recipients = [row[0] for row in result.fetchall()]
+
+    if not recipients:
+        raise HTTPException(400, "No recipients found for this company")
+
+    match = None
+    import re
+    match = re.search(r"(\d{4}-\d{2}-\d{2})_(\d{4}-\d{2}-\d{2})", req.report_filename)
+    start_date = match.group(1) if match else ""
+    end_date = match.group(2) if match else ""
+    subject = f"Tedarikci Performans Raporu — {start_date} / {end_date}"
+
+    delivery = DeliveryAgent()
+    email_result = delivery._send_email(
+        recipients=recipients,
+        subject=subject,
+        body_html=html_content or delivery._render_html(report_content, start_date, end_date),
+        body_text=report_content,
+    )
+
+    return {
+        "message": f"Report sent to {len(recipients)} recipient(s)",
+        "recipients": recipients,
+        "email_result": email_result,
     }

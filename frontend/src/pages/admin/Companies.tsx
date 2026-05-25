@@ -22,7 +22,7 @@ export default function Companies() {
 
   const fetchCompanies = () => {
     getCompanies()
-      .then(res => setCompanies(res.data.companies as Company[]))
+      .then(res => setCompanies(res.data.companies as unknown as Company[]))
       .catch(() => {});
   };
 

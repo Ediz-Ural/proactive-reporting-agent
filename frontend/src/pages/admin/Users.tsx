@@ -26,7 +26,7 @@ export default function Users() {
 
   const fetchUsers = () => {
     getUsers()
-      .then(res => setUsers(res.data.users as User[]))
+      .then(res => setUsers(res.data.users as unknown as User[]))
       .catch(() => {});
   };
 

@@ -94,8 +94,9 @@ def rag_node(state: AgentState) -> dict:
 def writer_node(state: AgentState) -> dict:
     """Run the Writer Agent to generate the executive summary report."""
     from src.agents.writer import WriterAgent
+    from config.settings import settings
 
-    strategy = state.get("writer_strategy") or "few_shot"
+    strategy = state.get("writer_strategy") or getattr(settings, "WRITER_STRATEGY", "few_shot")
     agent = WriterAgent(strategy=strategy)
     return agent.write(state)
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
-import { FileText, Download, Eye, Filter, Building2 } from 'lucide-react';
+import { FileText, Download, Eye, Filter, Building2, Mail, CheckCircle, XCircle } from 'lucide-react';
 import ReportViewer from '../components/ReportViewer';
-import { getReports, getReport, getCompanies } from '../api/client';
+import { getReports, getReport, getCompanies, sendReportEmail } from '../api/client';
 import type { ReportFile } from '../types';
 
 interface CompanyOption {
@@ -22,6 +22,8 @@ export default function Reports() {
   const [viewLoading, setViewLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | 0>(0);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const user = useMemo(() => {
     try {
@@ -88,6 +90,32 @@ export default function Reports() {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleSendEmail() {
+    if (!selectedReport) return;
+    setEmailSending(true);
+    setEmailStatus(null);
+    try {
+      const res = await sendReportEmail({
+        report_filename: selectedReport.filename,
+        company_id: selectedReport.company_id,
+        recipients: [],
+      });
+      setEmailStatus({
+        type: 'success',
+        message: res.data.message || 'Email gonderildi',
+      });
+    } catch (err: unknown) {
+      let message = 'Email gonderilemedi';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axErr = err as { response?: { data?: { detail?: string } } };
+        message = axErr.response?.data?.detail || message;
+      }
+      setEmailStatus({ type: 'error', message });
+    } finally {
+      setEmailSending(false);
+    }
   }
 
   function getCompanyName(companyId: number): string {
@@ -254,7 +282,27 @@ export default function Reports() {
                     <Download size={12} /> HTML
                   </button>
                 )}
+                {isAdmin && (
+                  <button
+                    onClick={handleSendEmail}
+                    disabled={emailSending}
+                    className="flex items-center gap-1 px-2.5 py-1 text-xs bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 rounded transition-colors"
+                  >
+                    <Mail size={12} />
+                    {emailSending ? 'Gonderiliyor...' : 'Email Gonder'}
+                  </button>
+                )}
               </div>
+              {emailStatus && (
+                <div className={`flex items-center gap-2 mb-2 px-3 py-2 rounded-lg text-xs ${
+                  emailStatus.type === 'success'
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {emailStatus.type === 'success' ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                  {emailStatus.message}
+                </div>
+              )}
               <ReportViewer
                 contentMd={selectedReport.content_md}
                 contentHtml={selectedReport.content_html}

@@ -36,6 +36,7 @@ reporting_agent.db
 data/chroma/
 data/reports/
 data/metrics/
+data/ab_test/
 
 # Logs
 logs/

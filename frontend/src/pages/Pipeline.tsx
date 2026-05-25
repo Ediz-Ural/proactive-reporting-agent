@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
-import { Play, Calendar, Building2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Play, Calendar, Building2, Mail, CheckCircle, XCircle } from 'lucide-react';
 import PipelineProgress from '../components/PipelineProgress';
 import ReportViewer from '../components/ReportViewer';
 import { EvaluatorRadar } from '../components/AnalysisCharts';
-import { runPipeline, runMonthly, getCompanies } from '../api/client';
+import { runPipeline, runMonthly, getCompanies, sendReportEmail } from '../api/client';
 import type { PipelineResult } from '../types';
 
 function formatLocalDate(d: Date): string {
@@ -41,6 +41,17 @@ export default function Pipeline() {
   const [result, setResult] = useState<PipelineResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<'idle' | 'running' | 'completed' | 'error'>('idle');
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || '{}');
+    } catch {
+      return {};
+    }
+  }, []);
+  const isAdmin = user.role === 'admin';
 
   const { start: computedStart, end: computedEnd } = computeDateRange(startDate, reportType);
 
@@ -105,6 +116,38 @@ export default function Pipeline() {
       setPipelineStatus('error');
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleSendEmail() {
+    if (!result?.delivery_status) return;
+    const channels = (result.delivery_status as Record<string, Record<string, unknown>>).channels as Record<string, Record<string, unknown>> | undefined;
+    const savedFiles = (channels?.file?.saved_files ?? []) as string[];
+    const mdFile = savedFiles.find((f: string) => f.endsWith('.md'));
+    if (!mdFile) return;
+    const filename = mdFile.split('/').pop()!;
+
+    setEmailSending(true);
+    setEmailStatus(null);
+    try {
+      const res = await sendReportEmail({
+        report_filename: filename,
+        company_id: companyId,
+        recipients: [],
+      });
+      setEmailStatus({
+        type: 'success',
+        message: res.data.message || 'Email gonderildi',
+      });
+    } catch (err: unknown) {
+      let message = 'Email gonderilemedi';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axErr = err as { response?: { data?: { detail?: string } } };
+        message = axErr.response?.data?.detail || message;
+      }
+      setEmailStatus({ type: 'error', message });
+    } finally {
+      setEmailSending(false);
     }
   }
 
@@ -229,7 +272,29 @@ export default function Pipeline() {
           {/* Generated Report */}
           {result.draft_report && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Uretilen Rapor</h3>
+              <div className="flex items-center gap-3 mb-3">
+                <h3 className="text-sm font-semibold text-gray-700 flex-1">Uretilen Rapor</h3>
+                {isAdmin && (
+                  <button
+                    onClick={handleSendEmail}
+                    disabled={emailSending}
+                    className="flex items-center gap-1 px-3 py-1.5 text-xs bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors"
+                  >
+                    <Mail size={14} />
+                    {emailSending ? 'Gonderiliyor...' : 'Email Gonder'}
+                  </button>
+                )}
+              </div>
+              {emailStatus && (
+                <div className={`flex items-center gap-2 mb-3 px-3 py-2 rounded-lg text-xs ${
+                  emailStatus.type === 'success'
+                    ? 'bg-green-50 text-green-700 border border-green-200'
+                    : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {emailStatus.type === 'success' ? <CheckCircle size={14} /> : <XCircle size={14} />}
+                  {emailStatus.message}
+                </div>
+              )}
               <ReportViewer contentMd={result.draft_report} />
             </div>
           )}

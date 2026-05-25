@@ -167,6 +167,12 @@ export const registerUser = (data: {
   company_id: number;
 }) => api.post('/auth/register', data);
 
+export const sendReportEmail = (data: {
+  report_filename: string;
+  company_id: number;
+  recipients: string[];
+}) => api.post('/admin/send-existing-report', data);
+
 export const uploadData = (file: File, companyId?: number) => {
   const formData = new FormData();
   formData.append('file', file);

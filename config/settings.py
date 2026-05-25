@@ -37,6 +37,7 @@ class Settings(BaseSettings):
 
     # ── Report generation ─────────────────────────────────────────────────────
     MAX_EVALUATOR_ITERATIONS: int = Field(default=3)
+    WRITER_STRATEGY: str = Field(default="few_shot", description="zero_shot | few_shot | cot")
 
     # ── Email delivery ────────────────────────────────────────────────────────
     SMTP_HOST: str = Field(default="")
