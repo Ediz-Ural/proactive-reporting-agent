@@ -1,0 +1,197 @@
+{
+  "test_config": {
+    "strategies": [
+      "zero_shot",
+      "few_shot",
+      "cot"
+    ],
+    "periods": [
+      "Mar 2017",
+      "Jun 2017",
+      "Sep 2017"
+    ],
+    "runs_per_combo": 5,
+    "total_runs": 45,
+    "company_id": 1,
+    "timestamp": "20260517_104404"
+  },
+  "strategy_stats": {
+    "zero_shot": {
+      "overall_score": {
+        "mean": 0.883,
+        "std": 0.024,
+        "min": 0.82,
+        "max": 0.91
+      },
+      "numerical_accuracy": {
+        "mean": 1.0,
+        "std": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "completeness": {
+        "mean": 0.767,
+        "std": 0.111,
+        "min": 0.5,
+        "max": 0.9
+      },
+      "readability": {
+        "mean": 0.897,
+        "std": 0.013,
+        "min": 0.85,
+        "max": 0.9
+      },
+      "actionability": {
+        "mean": 0.753,
+        "std": 0.052,
+        "min": 0.7,
+        "max": 0.8
+      },
+      "hallucination_free": {
+        "mean": 1.0,
+        "std": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "total_time": {
+        "mean": 15.647,
+        "std": 2.833,
+        "min": 12.38,
+        "max": 23.21
+      },
+      "word_count": {
+        "mean": 313.667,
+        "std": 20.437,
+        "min": 285,
+        "max": 345
+      },
+      "iterations": {
+        "mean": 1,
+        "std": 0.0,
+        "min": 1,
+        "max": 1
+      },
+      "n_runs": 15,
+      "n_errors": 0,
+      "approval_rate": 100.0
+    },
+    "few_shot": {
+      "overall_score": {
+        "mean": 0.856,
+        "std": 0.056,
+        "min": 0.76,
+        "max": 0.9
+      },
+      "numerical_accuracy": {
+        "mean": 0.887,
+        "std": 0.207,
+        "min": 0.5,
+        "max": 1.0
+      },
+      "completeness": {
+        "mean": 0.773,
+        "std": 0.08,
+        "min": 0.5,
+        "max": 0.8
+      },
+      "readability": {
+        "mean": 0.9,
+        "std": 0.0,
+        "min": 0.9,
+        "max": 0.9
+      },
+      "actionability": {
+        "mean": 0.747,
+        "std": 0.052,
+        "min": 0.7,
+        "max": 0.8
+      },
+      "hallucination_free": {
+        "mean": 0.973,
+        "std": 0.046,
+        "min": 0.9,
+        "max": 1.0
+      },
+      "total_time": {
+        "mean": 16.026,
+        "std": 4.226,
+        "min": 11.91,
+        "max": 27.8
+      },
+      "word_count": {
+        "mean": 283.533,
+        "std": 12.546,
+        "min": 264,
+        "max": 309
+      },
+      "iterations": {
+        "mean": 1,
+        "std": 0.0,
+        "min": 1,
+        "max": 1
+      },
+      "n_runs": 15,
+      "n_errors": 0,
+      "approval_rate": 100.0
+    },
+    "cot": {
+      "overall_score": {
+        "mean": 0.882,
+        "std": 0.031,
+        "min": 0.82,
+        "max": 0.91
+      },
+      "numerical_accuracy": {
+        "mean": 0.987,
+        "std": 0.052,
+        "min": 0.8,
+        "max": 1.0
+      },
+      "completeness": {
+        "mean": 0.787,
+        "std": 0.125,
+        "min": 0.5,
+        "max": 0.9
+      },
+      "readability": {
+        "mean": 0.887,
+        "std": 0.023,
+        "min": 0.85,
+        "max": 0.9
+      },
+      "actionability": {
+        "mean": 0.753,
+        "std": 0.052,
+        "min": 0.7,
+        "max": 0.8
+      },
+      "hallucination_free": {
+        "mean": 0.997,
+        "std": 0.013,
+        "min": 0.95,
+        "max": 1.0
+      },
+      "total_time": {
+        "mean": 15.487,
+        "std": 3.62,
+        "min": 11.39,
+        "max": 22.88
+      },
+      "word_count": {
+        "mean": 316.533,
+        "std": 23.043,
+        "min": 271,
+        "max": 353
+      },
+      "iterations": {
+        "mean": 1,
+        "std": 0.0,
+        "min": 1,
+        "max": 1
+      },
+      "n_runs": 15,
+      "n_errors": 0,
+      "approval_rate": 100.0
+    }
+  }
+}
