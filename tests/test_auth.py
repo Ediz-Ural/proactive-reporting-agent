@@ -87,10 +87,10 @@ def test_engine():
         """))
 
         # Seed users
-        from passlib.hash import bcrypt
-        admin_hash = bcrypt.hash("admin123")
-        user_hash = bcrypt.hash("user123")
-        user2_hash = bcrypt.hash("user2pass")
+        from src.auth import hash_password
+        admin_hash = hash_password("admin123")
+        user_hash = hash_password("user123")
+        user2_hash = hash_password("user2pass")
 
         conn.execute(text("""
             INSERT INTO users (email, password_hash, full_name, role, company_id)
@@ -540,8 +540,8 @@ class TestDbSync:
 
     def test_direct_sql_user_can_login(self, client, test_engine):
         """User inserted via raw SQL should be able to login."""
-        from passlib.hash import bcrypt
-        pw_hash = bcrypt.hash("directpass")
+        from src.auth import hash_password
+        pw_hash = hash_password("directpass")
         with test_engine.begin() as conn:
             conn.execute(text("""
                 INSERT INTO users (email, password_hash, full_name, role, company_id)

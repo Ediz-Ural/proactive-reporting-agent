@@ -307,7 +307,7 @@ def _build_company_map() -> dict[tuple[str, str], int]:
 
 def seed_default_company_and_admin(engine) -> None:
     """Create 12 companies (segment x region), admin user, and per-company demo users."""
-    from passlib.hash import bcrypt
+    from src.auth import hash_password
 
     with engine.begin() as conn:
         # Clear stale data so IDs align
@@ -323,7 +323,7 @@ def seed_default_company_and_admin(engine) -> None:
                 "domain": c["domain"], "segment": c["segment"], "region": c["region"],
             })
 
-        admin_hash = bcrypt.hash("admin123")
+        admin_hash = hash_password("admin123")
         conn.execute(text("""
             INSERT INTO users (email, password_hash, full_name, role, company_id)
             VALUES (:email, :hash, :name, :role, :company_id)
@@ -335,7 +335,7 @@ def seed_default_company_and_admin(engine) -> None:
             "company_id": 1,
         })
 
-        user_hash = bcrypt.hash("user123")
+        user_hash = hash_password("user123")
         for c in SEGMENT_REGION_COMPANIES:
             email = f"user@{c['domain']}"
             conn.execute(text("""
