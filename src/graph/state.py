@@ -6,8 +6,8 @@ Keys follow the pipeline order: input → collect → quality → analyse → ra
 → write → evaluate → deliver → feedback.
 """
 
-from typing import Annotated, Optional, TypedDict
 import operator
+from typing import Annotated, Optional, TypedDict
 
 
 class AgentState(TypedDict):

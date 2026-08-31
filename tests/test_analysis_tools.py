@@ -28,7 +28,6 @@ from src.tools.analysis_tools import (
     forecast_with_prophet,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture

@@ -9,7 +9,6 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.scheduler import get_previous_month_range, monthly_report_job, start_scheduler

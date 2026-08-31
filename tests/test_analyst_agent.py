@@ -20,7 +20,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.agents.analyst import AnalystAgent
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(scope="session")

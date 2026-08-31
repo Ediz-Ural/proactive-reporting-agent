@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pandas as pd
 import pytest
 from sqlalchemy import create_engine, text
 
@@ -147,8 +146,9 @@ def client(test_engine, mock_settings):
          patch("src.scheduler.start_scheduler", return_value=None), \
          patch("src.tools.sql_tools.get_db_engine", return_value=test_engine), \
          patch("src.auth.settings", mock_settings):
-        from src.api import app
         from fastapi.testclient import TestClient
+
+        from src.api import app
         yield TestClient(app)
 
 

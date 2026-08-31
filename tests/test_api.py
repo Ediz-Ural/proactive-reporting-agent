@@ -33,8 +33,9 @@ def client():
     with patch("config.settings.settings", mock_settings), \
          patch("src.auth.settings", mock_settings), \
          patch("src.scheduler.start_scheduler", return_value=None):
-        from src.api import app
         from fastapi.testclient import TestClient
+
+        from src.api import app
         return TestClient(app)
 
 

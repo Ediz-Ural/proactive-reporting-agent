@@ -240,8 +240,8 @@ async def run_monthly_endpoint(
     current_user: TokenData = Depends(get_current_user),
 ):
     """Manually trigger the monthly report for the previous month."""
-    from src.scheduler import get_previous_month_range
     from src.graph.workflow import run_pipeline_with_retry
+    from src.scheduler import get_previous_month_range
 
     start_date, end_date = get_previous_month_range()
     run_id = str(uuid.uuid4())
@@ -305,8 +305,8 @@ async def run_pipeline_sync(
 @app.get("/health")
 async def health():
     """Health check with database status."""
-    from src.tools.sql_tools import test_db_connection
     from config.settings import settings
+    from src.tools.sql_tools import test_db_connection
 
     db_status = test_db_connection()
 

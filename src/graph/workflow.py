@@ -11,10 +11,11 @@ Pipeline:
 """
 
 import uuid
+
 from langgraph.graph import END, START, StateGraph
 
-from src.graph.state import AgentState
 from config.logging_config import get_logger
+from src.graph.state import AgentState
 
 logger = get_logger(__name__)
 
@@ -93,8 +94,8 @@ def rag_node(state: AgentState) -> dict:
 
 def writer_node(state: AgentState) -> dict:
     """Run the Writer Agent to generate the executive summary report."""
-    from src.agents.writer import WriterAgent
     from config.settings import settings
+    from src.agents.writer import WriterAgent
 
     strategy = state.get("writer_strategy") or getattr(settings, "WRITER_STRATEGY", "few_shot")
     agent = WriterAgent(strategy=strategy)

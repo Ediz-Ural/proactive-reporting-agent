@@ -417,9 +417,9 @@ def forecast_with_prophet(
         return {}
 
     try:
-        from prophet import Prophet
-
         import logging as _logging
+
+        from prophet import Prophet
         _logging.getLogger("prophet").setLevel(_logging.WARNING)
         _logging.getLogger("cmdstanpy").setLevel(_logging.WARNING)
 

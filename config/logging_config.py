@@ -4,7 +4,6 @@ Centralized logging configuration for the proactive reporting agent.
 
 import logging
 import logging.config
-import sys
 from pathlib import Path
 
 

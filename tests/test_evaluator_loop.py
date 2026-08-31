@@ -15,7 +15,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.agents.evaluator import EvaluatorAgent

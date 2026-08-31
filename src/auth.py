@@ -78,6 +78,7 @@ def require_admin(current_user: TokenData = Depends(get_current_user)) -> TokenD
 def authenticate_user(email: str, password: str) -> Optional[dict]:
     """Look up user by email and verify password. Returns user dict or None."""
     from sqlalchemy import text
+
     from src.tools.sql_tools import get_db_engine
 
     engine = get_db_engine()

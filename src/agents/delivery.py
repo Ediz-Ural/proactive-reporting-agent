@@ -204,7 +204,7 @@ class DeliveryAgent:
         lines = report_content.strip().split("\n")
 
         parts = [
-            f"📊 *Tedarikçi Performans Raporu*",
+            "📊 *Tedarikçi Performans Raporu*",
             f"📅 {start_date} — {end_date}",
             "",
         ]
@@ -245,6 +245,7 @@ class DeliveryAgent:
         """Look up company name from DB, fallback to company_id."""
         try:
             from sqlalchemy import text
+
             from src.tools.sql_tools import get_db_engine
             engine = get_db_engine()
             with engine.connect() as conn:

@@ -11,16 +11,15 @@ Usage:
 
 import argparse
 import json
-import time
-import sys
 import os
 import statistics
+import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime
 from pathlib import Path
-
 
 STRATEGIES = ["zero_shot", "few_shot", "cot"]
 
@@ -33,8 +32,8 @@ TEST_PERIODS = [
 
 def run_single(strategy, company_id, start_date, end_date):
     """Run pipeline once with given strategy. Returns metrics dict."""
-    from src.graph.workflow import run_pipeline
     from config.settings import settings
+    from src.graph.workflow import run_pipeline
 
     settings.WRITER_STRATEGY = strategy
 

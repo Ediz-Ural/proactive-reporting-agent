@@ -57,8 +57,8 @@ def run_baseline(start_date: str, end_date: str, company_id: int) -> tuple[str, 
     Returns:
         (report_text, raw_data_dict) — raw_data is reused by the evaluator.
     """
-    from src.tools.sql_tools import get_weekly_summary, get_sales_by_category
     from src.tools.llm_tools import call_llm_with_retry
+    from src.tools.sql_tools import get_sales_by_category, get_weekly_summary
 
     weekly_summary = get_weekly_summary(start_date, end_date, company_id=company_id)
     by_category = get_sales_by_category(start_date, end_date, company_id=company_id)

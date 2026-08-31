@@ -362,7 +362,7 @@ Geçmiş Rapor Bağlamı:
             pct_profit = comparison.get("total_profit_change_pct")
             pct_orders = comparison.get("total_orders_change_pct")
             if pct_sales is not None:
-                block += f"\nÖNCEKİ DÖNEM KARŞILAŞTIRMASI:\n"
+                block += "\nÖNCEKİ DÖNEM KARŞILAŞTIRMASI:\n"
                 block += f"- Gelir değişimi: %{pct_sales:+.1f}\n"
                 if pct_profit is not None:
                     block += f"- Kâr değişimi: %{pct_profit:+.1f}\n"

@@ -20,9 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config.logging_config import setup_logging
+
 setup_logging()
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,7 +72,7 @@ def main():
 
     total = len(companies) * len(months)
     print(f"\n{'='*60}")
-    print(f"BATCH REPORT GENERATION")
+    print("BATCH REPORT GENERATION")
     print(f"{'='*60}")
     print(f"Companies: {len(companies)}")
     print(f"Months:    {len(months)} ({args.start} — {args.end})")
@@ -113,7 +115,6 @@ def main():
                 )
 
                 elapsed = time.time() - t1
-                status = state.get("current_agent", "?")
                 eval_data = state.get("evaluation") or {}
                 score = eval_data.get("overall_score", 0)
                 approved = eval_data.get("approved", False)
@@ -147,7 +148,7 @@ def main():
     print(f"Succeeded: {succeeded}/{total}")
     print(f"Failed:    {failed}/{total}")
     if errors:
-        print(f"\nErrors:")
+        print("\nErrors:")
         for e in errors[:20]:
             print(f"  - {e}")
     print(f"{'='*60}")
