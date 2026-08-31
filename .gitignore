@@ -18,6 +18,8 @@ ENV/
 
 # Environment variables
 .env
+.env.*
+!.env.example
 *.env.local
 
 # IDE
@@ -37,6 +39,9 @@ data/chroma/
 data/reports/
 data/metrics/
 data/ab_test/
+data/pattern_comparison/
+data/*.db
+*.sqlite3
 
 # Logs
 logs/
@@ -58,3 +63,9 @@ htmlcov/
 
 # Build artifacts
 *.whl
+
+# Node
+node_modules/
+
+# Local agent/tooling config
+.claude/

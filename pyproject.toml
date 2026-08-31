@@ -7,9 +7,13 @@ packages = ["src"]
 
 [project]
 name = "proactive-reporting-agent"
-version = "0.1.0"
+version = "0.7.0"
 description = "Multi-agent proactive reporting system for automated data analysis and report delivery"
+readme = "README.md"
 requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Ediz Ural" }]
+keywords = ["langgraph", "multi-agent", "llm", "reporting", "rag", "fastapi"]
 dependencies = [
     # Core LLM & Agents
     "langchain>=0.3",
@@ -71,8 +75,20 @@ target-version = "py311"
 select = ["E", "F", "I", "N", "W"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+# Scripts and seed utilities insert the project root into sys.path before importing.
+"scripts/*.py" = ["E402"]
+"data/*.py" = ["E402"]
+# `X` follows scikit-learn convention; test doubles are named like classes.
+"src/tools/analysis_tools.py" = ["N806"]
+"tests/*.py" = ["N806"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+
+[project.urls]
+Homepage = "https://github.com/Ediz-Ural/proactive-reporting-agent"
+Repository = "https://github.com/Ediz-Ural/proactive-reporting-agent"

@@ -1,51 +1,69 @@
 # Proactive Reporting Agent
 
-A multi-agent AI system that automatically collects data from a database, analyses trends and anomalies, generates executive reports, and proactively delivers them to decision-makers.
+A multi-agent AI system that collects data from a database, analyses trends and anomalies,
+writes an executive report with an LLM, scores it with an evaluator loop, and proactively
+delivers it by email or WhatsApp — on a schedule or on demand.
 
-> **Status:** Week 1 complete — data layer, SQL tools, Data Collector + Data Quality agents functional.
+Ships with a FastAPI backend, a React dashboard, JWT auth with multi-tenant company
+isolation, and scripts for the agent-pattern experiments the project was built to run.
+
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+---
+
+## Features
+
+- **9-agent LangGraph pipeline** — collection → quality gate → analysis → RAG → writing → evaluation loop → delivery → feedback
+- **Statistical analysis** — trend detection (Mann-Kendall), anomaly detection (Isolation Forest, z-score), forecasting (Prophet), category and sector comparison
+- **RAG over past reports** — ChromaDB retrieval with temporal filtering, so a report never cites the future
+- **Evaluator-optimizer loop** — the report is scored and rewritten up to `MAX_EVALUATOR_ITERATIONS` times before it ships
+- **Delivery** — SMTP email with an HTML template, optional WhatsApp via Twilio
+- **Multi-tenant API** — JWT auth, per-company data isolation, admin endpoints for companies, users, and data upload
+- **React dashboard** — pipeline progress, KPI cards, charts, report viewer, admin panel
+- **Scheduler** — APScheduler monthly job, disabled by default
+- **Experiment scripts** — A/B test of prompting strategies and a prompt-chaining vs. multi-agent pattern comparison
 
 ---
 
 ## Architecture
 
 ```
-Scheduler
+Scheduler / API / CLI
     │
     ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     LANGGRAPH PIPELINE                          │
 │                                                                 │
-│  Orchestrator ──► Data Collector ──► Data Quality              │
-│                                           │                     │
-│                                    [quality gate]               │
-│                                           │                     │
-│                                       Analyst ──► RAG Agent    │
-│                                                        │        │
-│                                                     Writer      │
-│                                                        │        │
-│                                                   Evaluator ◄──┐│
-│                                                        │       ││
-│                                               [score loop ≤3]  ││
-│                                                        │       ┘│
-│                                                   Delivery      │
-│                                                        │        │
-│                                                    Feedback     │
+│  Data Collector ──► Data Quality                                │
+│                          │                                      │
+│                   [quality gate] ──► (abort on invalid data)    │
+│                          │                                      │
+│                    Orchestrator ──► Analyst ──► RAG Agent       │
+│                                                      │          │
+│                                                   Writer        │
+│                                                      │          │
+│                                                 Evaluator ◄──┐  │
+│                                                      │       │  │
+│                                              [score loop ≤3]─┘  │
+│                                                      │          │
+│                                                  Delivery       │
+│                                                      │          │
+│                                                  Feedback       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Agent Responsibilities
-
-| Agent | Week | Responsibility |
-|---|---|---|
-| **Orchestrator** | 2 | Coordinates the pipeline, handles routing |
-| **Data Collector** | 1 ✅ | Queries MySQL/SQLite, packages raw data |
-| **Data Quality** | 1 ✅ | Null checks, outliers, date consistency |
-| **Analyst** | 2 | Trend, anomaly, forecasting (Python tools) |
-| **RAG Agent** | 3 | Retrieves past report context (ChromaDB) |
-| **Writer** | 3 | Generates executive summary via LLM |
-| **Evaluator** | 4 | Scores report quality, triggers revisions |
-| **Delivery** | 4 | Sends report via SMTP |
-| **Feedback** | 5 | Tracks opens/clicks for personalisation |
+| Agent | Responsibility |
+|---|---|
+| **Data Collector** | Queries MySQL/SQLite, packages raw data for the period |
+| **Data Quality** | Null checks, outliers, date consistency — gates the pipeline |
+| **Orchestrator** | Builds the analysis plan and routes the run |
+| **Analyst** | Trends, anomalies, forecasts, category/sector performance |
+| **RAG Agent** | Retrieves context from past reports (ChromaDB) |
+| **Writer** | Generates the executive report via LLM (zero-shot / few-shot / CoT) |
+| **Evaluator** | Scores quality and triggers revisions until approved |
+| **Delivery** | Sends the report over SMTP and/or WhatsApp |
+| **Feedback** | Records run metrics for later personalisation |
 
 ---
 
@@ -53,20 +71,129 @@ Scheduler
 
 | Layer | Technology |
 |---|---|
-| Multi-Agent | LangGraph 0.2+ |
-| LLM | OpenAI GPT-4o (or Claude Sonnet) |
-| RAG | ChromaDB + text-embedding-3-small |
-| Database | SQLite (dev) / MySQL 8.0 (prod) |
-| ORM | SQLAlchemy 2.0 |
-| Data | pandas, numpy |
-| Stats/ML | scikit-learn, statsmodels, scipy, prophet |
+| Multi-agent | LangGraph 0.2+ / LangChain 0.3+ |
+| LLM | OpenAI GPT-4o |
+| RAG | ChromaDB + `text-embedding-3-small` |
+| Database | SQLite (dev) / MySQL 8.0 (prod), SQLAlchemy 2.0 |
+| Analysis | pandas, numpy, scikit-learn, statsmodels, scipy, prophet, pymannkendall |
 | Reporting | Jinja2, python-docx, matplotlib, plotly |
-| API | FastAPI + uvicorn |
+| API | FastAPI + uvicorn, JWT (python-jose), bcrypt |
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS 4, Recharts |
 | Scheduler | APScheduler |
-| Delivery | SMTP |
-| Config | Pydantic Settings |
+| Delivery | SMTP, Twilio WhatsApp |
 | Container | Docker + Docker Compose |
 | Observability | LangSmith (optional) |
+
+---
+
+## Quick Start
+
+### Option A — SQLite, no Docker
+
+```bash
+git clone git@github.com:Ediz-Ural/proactive-reporting-agent.git
+cd proactive-reporting-agent
+
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+
+cp .env.example .env             # set OPENAI_API_KEY for the LLM agents
+
+python data/seed_db.py --generate    # 5,000 synthetic rows + demo companies/users
+python data/seed_reports.py          # optional: index sample reports into ChromaDB
+
+pytest -q                        # run the test suite
+uvicorn src.api:app --reload     # API on http://localhost:8000
+```
+
+Frontend, in a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev                      # http://localhost:5173
+```
+
+### Option B — Docker Compose (MySQL + API + frontend + Adminer)
+
+```bash
+cp .env.example .env             # set DB_TYPE=mysql and a DB_PASSWORD
+docker compose up -d
+docker compose exec app python data/seed_db.py --generate
+```
+
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3000 |
+| API docs | http://localhost:8000/docs |
+| Adminer | http://localhost:8080 |
+
+### Demo credentials
+
+`seed_db.py` creates demo accounts for local use only — change or remove them before
+deploying anywhere real.
+
+| Role | Email | Password |
+|---|---|---|
+| Admin | `admin@superstore.com` | `admin123` |
+| Company user | `user@<company-domain>` | `user123` |
+
+### Dataset
+
+The seeder generates synthetic data by default. To use the Kaggle *Sample Superstore*
+dataset instead, download it yourself and point the seeder at it — it is not redistributed
+in this repository:
+
+```bash
+python data/seed_db.py --csv data/raw/superstore.csv
+```
+
+---
+
+## Usage
+
+### Run the pipeline in Python
+
+```python
+from src.graph.workflow import run_pipeline
+
+state = run_pipeline(
+    start_date="2017-06-01",
+    end_date="2017-06-30",
+    report_type="monthly",
+    company_id=1,
+)
+print(state["final_report"])
+```
+
+### Key API endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/auth/login` | Obtain a JWT |
+| `POST` | `/run` | Trigger a pipeline run in the background |
+| `POST` | `/run/monthly` | Run for a given month |
+| `POST` | `/run/sync` | Run and wait for the result |
+| `GET` | `/runs`, `/runs/{id}` | Run history and status |
+| `GET` | `/reports`, `/reports/{filename}` | List and fetch generated reports |
+| `GET` | `/db/stats`, `/rag/stats` | Data and vector-store statistics |
+| `POST` | `/admin/upload-data` | Upload a CSV for a company (admin) |
+| `POST` | `/admin/companies` | Tenant administration (admin) |
+| `POST` | `/admin/send-report` | Deliver a report manually (admin) |
+
+Interactive documentation is at `/docs`.
+
+### Scripts
+
+```bash
+python scripts/batch_generate.py --start 2017-01     # generate reports for all companies
+python scripts/ab_test.py --runs 3 --company-id 1    # compare prompting strategies
+python scripts/pattern_comparison.py --runs 5        # prompt chaining vs. multi-agent
+```
+
+Results are written to `data/ab_test/`, `data/pattern_comparison/`, and `data/metrics/`
+(all git-ignored).
 
 ---
 
@@ -74,199 +201,78 @@ Scheduler
 
 ```
 proactive-reporting-agent/
-├── config/
-│   ├── settings.py          # Pydantic Settings (all env vars)
-│   └── logging_config.py    # Centralised logging setup
-│
-├── data/
-│   ├── raw/                 # Place Superstore CSV here
-│   ├── processed/           # Cleaned data output
-│   └── seed_db.py           # CSV → DB loader (or synthetic data generator)
-│
+├── config/            # Pydantic settings + logging config
+├── data/              # seed_db.py, seed_reports.py, sample reports, generated artefacts
 ├── src/
-│   ├── agents/              # One file per agent
-│   │   ├── data_collector.py  ← Week 1 complete
-│   │   ├── data_quality.py    ← Week 1 complete
-│   │   ├── orchestrator.py    (stub)
-│   │   ├── analyst.py         (stub)
-│   │   ├── rag_agent.py       (stub)
-│   │   ├── writer.py          (stub)
-│   │   ├── evaluator.py       (stub)
-│   │   ├── delivery.py        (stub)
-│   │   └── feedback.py        (stub)
-│   │
-│   ├── tools/
-│   │   ├── sql_tools.py       ← Week 1 complete
-│   │   ├── analysis_tools.py  ← Week 1 complete
-│   │   ├── rag_tools.py       (stub)
-│   │   └── report_tools.py    (stub)
-│   │
-│   ├── models/
-│   │   └── schemas.py         # Pydantic data contracts
-│   │
-│   ├── graph/
-│   │   ├── state.py           # LangGraph AgentState TypedDict
-│   │   └── workflow.py        # LangGraph DAG definition
-│   │
-│   └── utils/
-│       └── helpers.py         # Misc utilities
-│
-├── templates/
-│   └── report_template.html   # Jinja2 template (Week 3)
-│
-├── tests/
-│   ├── test_data_collector.py  ← Week 1 complete
-│   ├── test_data_quality.py    ← Week 1 complete
-│   └── test_analysis_tools.py  ← Week 1 complete
-│
-├── notebooks/
-│   └── exploration.ipynb
-│
+│   ├── agents/        # one file per agent
+│   ├── tools/         # sql, analysis, rag, report, llm tools
+│   ├── graph/         # LangGraph state + workflow DAG
+│   ├── models/        # Pydantic schemas
+│   ├── api.py         # FastAPI app
+│   ├── auth.py        # JWT auth
+│   └── scheduler.py   # APScheduler job
+├── frontend/          # React + TypeScript dashboard
+├── scripts/           # batch generation and experiments
+├── templates/         # Jinja2 HTML report template
+├── tests/             # pytest suite
 ├── docker-compose.yml
-├── Dockerfile
-├── pyproject.toml
-└── .env.example
+└── pyproject.toml
 ```
 
 ---
 
-## Quick Start
+## Configuration
 
-### Option A — SQLite (no Docker required)
-
-```bash
-# 1. Clone and create virtual environment
-git clone <repo-url>
-cd proactive-reporting-agent
-python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
-
-# 2. Install dependencies
-pip install -e ".[dev]"
-
-# 3. Copy environment template
-cp .env.example .env
-# DB_TYPE is already 'sqlite' by default — no changes needed
-
-# 4. Seed the database (generates 5 000 synthetic rows)
-python data/seed_db.py --generate
-
-# OR if you have the Kaggle Superstore CSV:
-# python data/seed_db.py --csv data/raw/superstore.csv
-
-# 5. Run tests
-pytest -v
-```
-
-### Option B — MySQL via Docker
-
-```bash
-# 1. Copy and configure .env
-cp .env.example .env
-# Set DB_TYPE=mysql, DB_PASSWORD=secret (or your own)
-
-# 2. Start services
-docker compose up -d
-
-# 3. Seed the database
-docker compose exec app python data/seed_db.py --generate
-
-# 4. Run tests inside container
-docker compose exec app pytest -v
-
-# 5. Adminer DB UI → http://localhost:8080
-#    Server: mysql  |  User: reporter  |  Password: secret  |  DB: reporting_agent
-```
-
----
-
-## Running the Pipeline
-
-```python
-from src.graph.workflow import run_pipeline
-
-state = run_pipeline(
-    start_date="2024-01-01",
-    end_date="2024-01-07",
-    report_type="weekly",
-)
-print(state["weekly_summary"])
-```
-
-### Using Data Collector directly
-
-```python
-from src.agents.data_collector import DataCollectorAgent
-
-agent = DataCollectorAgent()
-data = agent.collect("2024-01-01", "2024-01-31")
-
-print(data["weekly_summary"])
-# {'period': '2024-01-01 to 2024-01-31', 'total_revenue': 12340.5, ...}
-```
-
-### Validating data quality
-
-```python
-from src.agents.data_quality import DataQualityAgent
-
-qa = DataQualityAgent()
-report = qa.validate(data)
-
-print(report["is_valid"])      # True / False
-print(report["warnings"])      # ['Column X has 6.2% nulls', ...]
-print(report["errors"])        # []
-```
-
----
-
-## Environment Variables
+All settings come from environment variables or `.env` (see `.env.example`).
 
 | Variable | Default | Description |
 |---|---|---|
 | `DB_TYPE` | `sqlite` | `sqlite` or `mysql` |
-| `DB_HOST` | `localhost` | MySQL host |
-| `DB_PORT` | `3306` | MySQL port |
-| `DB_USER` | `root` | DB username |
-| `DB_PASSWORD` | `` | DB password |
-| `DB_NAME` | `reporting_agent` | Database name |
 | `SQLITE_PATH` | `data/reporting_agent.db` | SQLite file path |
-| `OPENAI_API_KEY` | `` | Required for Week 2+ (LLM agents) |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | — | MySQL connection |
+| `OPENAI_API_KEY` | — | Required for the LLM agents |
 | `OPENAI_MODEL` | `gpt-4o` | LLM model ID |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
-| `CHROMA_PERSIST_DIR` | `data/chroma` | ChromaDB storage |
-| `MAX_EVALUATOR_ITERATIONS` | `3` | Max Writer→Evaluator loops |
-| `SMTP_HOST` | `` | SMTP server (Week 4) |
-| `REPORT_RECIPIENTS` | `` | Comma-separated emails |
+| `CHROMA_PERSIST_DIR` | `data/chroma` | Vector store location |
+| `WRITER_STRATEGY` | `few_shot` | `zero_shot` / `few_shot` / `cot` |
+| `MAX_EVALUATOR_ITERATIONS` | `3` | Writer→Evaluator revision limit |
+| `JWT_SECRET_KEY` | placeholder | **Must be changed for any real deployment** |
+| `SMTP_*`, `REPORT_RECIPIENTS` | — | Email delivery |
+| `TWILIO_*`, `WHATSAPP_*` | — | Optional WhatsApp delivery |
+| `SCHEDULER_ENABLED` | `false` | Enable the monthly job |
+| `LANGCHAIN_*` | — | Optional LangSmith tracing |
+
+Never commit a real `.env` — it is git-ignored.
 
 ---
 
-## Weekly Progress
+## Testing
 
-| Week | Goal | Status |
-|---|---|---|
-| **1** | Infrastructure, data layer, Data Collector + Quality agents | ✅ Complete |
-| **2** | Analyst Agent (trend/anomaly/forecast), LangGraph full DAG | 🔜 |
-| **3** | RAG Agent (ChromaDB), Writer Agent (LLM), report templates | 🔜 |
-| **4** | Evaluator Agent, Delivery Agent (SMTP), FastAPI endpoint | 🔜 |
-| **5** | Feedback Agent, pattern comparison experiment, evaluation metrics | 🔜 |
+```bash
+pytest -q                    # full suite
+pytest --cov=src -q          # with coverage
+ruff check .                 # lint
+```
+
+CI runs the backend lint + tests and the frontend lint + build on every push and pull request.
 
 ---
 
-## Academic Experiment Design
+## Experiment Design
 
-This project compares four agentic design patterns on the same dataset:
+The project compares agentic design patterns on the same dataset:
 
 | Pattern | Description |
 |---|---|
-| Prompt Chaining | Baseline — sequential LLM calls |
-| Orchestrator-Workers | Central coordinator + specialised workers |
-| +Evaluator-Optimizer | Adds quality feedback loop (current architecture) |
-| +Parallelization | Voting ensemble across parallel writer instances |
+| Prompt chaining | Baseline — sequential LLM calls |
+| Orchestrator-workers | Central coordinator + specialised workers |
+| + Evaluator-optimizer | Adds the quality feedback loop (this architecture) |
 
-Each pattern is evaluated with five context strategies (Zero-shot, Few-shot, CoT, ReAct, ToT) using ROUGE-L, BERTScore, hallucination rate, latency, and token cost as metrics.
+Each pattern is run with several context strategies (zero-shot, few-shot, chain-of-thought)
+and scored on report quality, latency, and token cost by the Evaluator agent.
 
 ---
 
 ## License
 
-MIT — see `LICENSE` for details.
+MIT — see [LICENSE](LICENSE).
