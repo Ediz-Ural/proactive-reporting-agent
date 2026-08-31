@@ -131,6 +131,65 @@ class TestRunEndpoint:
         assert response.status_code == 422
 
 
+class TestPerRequestLLMCredentials:
+    """The caller's own OpenAI key travels as a header and reaches the pipeline."""
+
+    def test_run_forwards_key_and_model(self, client, auth_headers):
+        """POST /run passes X-OpenAI-* headers through to run_pipeline."""
+        with patch("src.graph.workflow.run_pipeline") as mock_pipeline:
+            mock_pipeline.return_value = {}
+            response = client.post("/run", json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-31",
+            }, headers={
+                **auth_headers,
+                "X-OpenAI-Key": "sk-user-key",
+                "X-OpenAI-Model": "gpt-4o-mini",
+            })
+
+        assert response.status_code == 200
+        _, kwargs = mock_pipeline.call_args
+        assert kwargs["api_key"] == "sk-user-key"
+        assert kwargs["model"] == "gpt-4o-mini"
+
+    def test_run_without_headers_sends_none(self, client, auth_headers):
+        """Without the headers the pipeline falls back to server settings."""
+        with patch("src.graph.workflow.run_pipeline") as mock_pipeline:
+            mock_pipeline.return_value = {}
+            client.post("/run", json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-31",
+            }, headers=auth_headers)
+
+        _, kwargs = mock_pipeline.call_args
+        assert kwargs["api_key"] is None
+        assert kwargs["model"] is None
+
+    def test_sync_forwards_key(self, client, auth_headers):
+        """POST /run/sync also forwards the caller's key."""
+        with patch("src.graph.workflow.run_pipeline") as mock_pipeline:
+            mock_pipeline.return_value = {}
+            response = client.post("/run/sync", json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-31",
+            }, headers={**auth_headers, "X-OpenAI-Key": "sk-user-key"})
+
+        assert response.status_code == 200
+        _, kwargs = mock_pipeline.call_args
+        assert kwargs["api_key"] == "sk-user-key"
+
+    def test_key_is_not_echoed_back(self, client, auth_headers):
+        """The response must not contain the caller's key."""
+        with patch("src.graph.workflow.run_pipeline") as mock_pipeline:
+            mock_pipeline.return_value = {}
+            response = client.post("/run", json={
+                "start_date": "2024-01-01",
+                "end_date": "2024-01-31",
+            }, headers={**auth_headers, "X-OpenAI-Key": "sk-user-key"})
+
+        assert "sk-user-key" not in response.text
+
+
 class TestRunMonthlyEndpoint:
     """Tests for POST /run/monthly."""
 

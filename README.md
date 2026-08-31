@@ -19,6 +19,7 @@ isolation, and scripts for the agent-pattern experiments the project was built t
 - **RAG over past reports** — ChromaDB retrieval with temporal filtering, so a report never cites the future
 - **Evaluator-optimizer loop** — the report is scored and rewritten up to `MAX_EVALUATOR_ITERATIONS` times before it ships
 - **Delivery** — SMTP email with an HTML template, optional WhatsApp via Twilio
+- **Bring your own API key** — each user enters their own OpenAI key and model in the dashboard; it stays in their browser and is never stored server-side
 - **Multi-tenant API** — JWT auth, per-company data isolation, admin endpoints for companies, users, and data upload
 - **React dashboard** — pipeline progress, KPI cards, charts, report viewer, admin panel
 - **Scheduler** — APScheduler monthly job, disabled by default
@@ -98,7 +99,7 @@ python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 
-cp .env.example .env             # set OPENAI_API_KEY for the LLM agents
+cp .env.example .env             # OPENAI_API_KEY is optional, see "API keys" below
 
 python data/seed_db.py --generate    # 5,000 synthetic rows + demo companies/users
 python data/seed_reports.py          # optional: index sample reports into ChromaDB
@@ -139,6 +140,19 @@ deploying anywhere real.
 | Admin | `admin@superstore.com` | `admin123` |
 | Company user | `user@<company-domain>` | `user123` |
 
+### API keys
+
+Every user brings their own OpenAI credentials. Enter a key and pick a model
+under **Ayarlar** (Settings) in the dashboard: the key is kept in that browser's
+`localStorage` and sent as an `X-OpenAI-Key` header on the requests that run the
+pipeline. The server uses it for that run and never writes it to disk, so no key
+of yours ends up in the database, the logs, or a backup.
+
+`OPENAI_API_KEY` in `.env` is an optional fallback for runs that have no user
+behind them — the scheduler, `scripts/`, and direct `run_pipeline` calls. With
+neither a header nor an env key the pipeline still runs, but the LLM steps
+(writer, evaluator) are skipped.
+
 ### Dataset
 
 The seeder generates synthetic data by default. To use the Kaggle *Sample Superstore*
@@ -163,6 +177,8 @@ state = run_pipeline(
     end_date="2017-06-30",
     report_type="monthly",
     company_id=1,
+    api_key="sk-...",      # optional; falls back to OPENAI_API_KEY
+    model="gpt-4o-mini",   # optional; falls back to OPENAI_MODEL
 )
 print(state["final_report"])
 ```
@@ -172,7 +188,7 @@ print(state["final_report"])
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/auth/login` | Obtain a JWT |
-| `POST` | `/run` | Trigger a pipeline run in the background |
+| `POST` | `/run` | Trigger a pipeline run in the background (accepts `X-OpenAI-Key`) |
 | `POST` | `/run/monthly` | Run for a given month |
 | `POST` | `/run/sync` | Run and wait for the result |
 | `GET` | `/runs`, `/runs/{id}` | Run history and status |
@@ -230,8 +246,8 @@ All settings come from environment variables or `.env` (see `.env.example`).
 | `DB_TYPE` | `sqlite` | `sqlite` or `mysql` |
 | `SQLITE_PATH` | `data/reporting_agent.db` | SQLite file path |
 | `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` | — | MySQL connection |
-| `OPENAI_API_KEY` | — | Required for the LLM agents |
-| `OPENAI_MODEL` | `gpt-4o` | LLM model ID |
+| `OPENAI_API_KEY` | — | Optional fallback; users supply their own key in the UI |
+| `OPENAI_MODEL` | `gpt-4o` | Default model when the user picks none |
 | `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding model |
 | `CHROMA_PERSIST_DIR` | `data/chroma` | Vector store location |
 | `WRITER_STRATEGY` | `few_shot` | `zero_shot` / `few_shot` / `cot` |

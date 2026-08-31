@@ -12,7 +12,7 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
@@ -210,8 +210,16 @@ async def run_pipeline_endpoint(
     request: PipelineRequest,
     background_tasks: BackgroundTasks,
     current_user: TokenData = Depends(get_current_user),
+    x_openai_key: str | None = Header(default=None),
+    x_openai_model: str | None = Header(default=None),
 ):
-    """Trigger the full reporting pipeline."""
+    """
+    Trigger the full reporting pipeline.
+
+    The caller may pass their own OpenAI credentials in the X-OpenAI-Key and
+    X-OpenAI-Model headers. They are used for this run only and never stored;
+    without them the server falls back to OPENAI_API_KEY from the environment.
+    """
     from src.graph.workflow import run_pipeline
 
     run_id = str(uuid.uuid4())
@@ -225,6 +233,8 @@ async def run_pipeline_endpoint(
         report_type=request.report_type,
         recipients=request.recipients,
         company_id=cid,
+        api_key=x_openai_key,
+        model=x_openai_model,
     )
 
     return PipelineResponse(
@@ -238,6 +248,8 @@ async def run_pipeline_endpoint(
 async def run_monthly_endpoint(
     background_tasks: BackgroundTasks,
     current_user: TokenData = Depends(get_current_user),
+    x_openai_key: str | None = Header(default=None),
+    x_openai_model: str | None = Header(default=None),
 ):
     """Manually trigger the monthly report for the previous month."""
     from src.graph.workflow import run_pipeline_with_retry
@@ -252,6 +264,8 @@ async def run_monthly_endpoint(
         end_date=end_date,
         report_type="monthly",
         company_id=current_user.company_id,
+        api_key=x_openai_key,
+        model=x_openai_model,
     )
 
     return PipelineResponse(
@@ -265,6 +279,8 @@ async def run_monthly_endpoint(
 async def run_pipeline_sync(
     request: PipelineRequest,
     current_user: TokenData = Depends(get_current_user),
+    x_openai_key: str | None = Header(default=None),
+    x_openai_model: str | None = Header(default=None),
 ):
     """Run the pipeline synchronously and return the full result."""
     from src.graph.workflow import run_pipeline
@@ -277,6 +293,8 @@ async def run_pipeline_sync(
         report_type=request.report_type,
         recipients=request.recipients,
         company_id=cid,
+        api_key=x_openai_key,
+        model=x_openai_model,
     )
 
     qr = state.get("quality_report") or {}
@@ -315,6 +333,8 @@ async def health():
         "version": "0.7.0",
         "database": db_status,
         "scheduler_enabled": settings.SCHEDULER_ENABLED,
+        "server_llm_key_configured": bool(settings.OPENAI_API_KEY),
+        "default_model": settings.OPENAI_MODEL,
     }
 
 
@@ -643,6 +663,8 @@ async def list_users(admin: TokenData = Depends(require_admin)):
 async def admin_send_report(
     req: AdminReportRequest,
     admin: TokenData = Depends(require_admin),
+    x_openai_key: str | None = Header(default=None),
+    x_openai_model: str | None = Header(default=None),
 ):
     """Admin triggers report generation for any company."""
     from src.graph.workflow import run_pipeline
@@ -653,6 +675,8 @@ async def admin_send_report(
         report_type=req.report_type,
         recipients=req.recipients,
         company_id=req.company_id,
+        api_key=x_openai_key,
+        model=x_openai_model,
     )
 
     return {

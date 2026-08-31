@@ -6,6 +6,7 @@ import type {
   DbStats,
   RagStats,
   PipelineResult,
+  LLMSettings,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -15,12 +16,42 @@ const api = axios.create({
   timeout: 180000, // 3 minutes for sync pipeline
 });
 
-// JWT token interceptor
+// ── LLM credentials ─────────────────────────────────────────────────────────
+// The user's own OpenAI key never leaves their browser except as a header on
+// the requests that actually run the pipeline. It is not stored server-side.
+
+const LLM_KEY_STORAGE = 'openai_api_key';
+const LLM_MODEL_STORAGE = 'openai_model';
+
+export const getLLMSettings = (): LLMSettings => ({
+  apiKey: localStorage.getItem(LLM_KEY_STORAGE) || '',
+  model: localStorage.getItem(LLM_MODEL_STORAGE) || '',
+});
+
+export const saveLLMSettings = ({ apiKey, model }: LLMSettings) => {
+  if (apiKey) localStorage.setItem(LLM_KEY_STORAGE, apiKey);
+  else localStorage.removeItem(LLM_KEY_STORAGE);
+
+  if (model) localStorage.setItem(LLM_MODEL_STORAGE, model);
+  else localStorage.removeItem(LLM_MODEL_STORAGE);
+};
+
+export const clearLLMSettings = () => {
+  localStorage.removeItem(LLM_KEY_STORAGE);
+  localStorage.removeItem(LLM_MODEL_STORAGE);
+};
+
+// JWT token + LLM credential interceptor
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  const { apiKey, model } = getLLMSettings();
+  if (apiKey) config.headers['X-OpenAI-Key'] = apiKey;
+  if (model) config.headers['X-OpenAI-Model'] = model;
+
   return config;
 });
 

@@ -180,6 +180,8 @@ def run_pipeline(
     report_type: str = "weekly",
     recipients: list[str] | None = None,
     company_id: int = 1,
+    api_key: str | None = None,
+    model: str | None = None,
 ) -> AgentState:
     """
     Execute the full reporting pipeline.
@@ -190,10 +192,14 @@ def run_pipeline(
         report_type: "weekly" | "monthly" | "quarterly".
         recipients: List of email addresses.
         company_id: Tenant company ID.
+        api_key: Caller-supplied OpenAI key. Falls back to settings when absent.
+        model: Caller-supplied model ID. Falls back to settings when absent.
 
     Returns:
         Final AgentState after all nodes have executed.
     """
+    from src.tools.llm_tools import llm_credentials
+
     graph = build_graph()
 
     initial_state: AgentState = {
@@ -226,7 +232,9 @@ def run_pipeline(
         end_date,
     )
 
-    final_state = graph.invoke(initial_state)
+    with llm_credentials(api_key, model):
+        final_state = graph.invoke(initial_state)
+
     logger.info("Pipeline completed | run_id=%s", initial_state["run_id"])
     return final_state
 
@@ -240,6 +248,8 @@ def run_pipeline_with_retry(
     recipients: list[str] | None = None,
     company_id: int = 1,
     max_retries: int = 2,
+    api_key: str | None = None,
+    model: str | None = None,
 ) -> AgentState:
     """
     Execute the pipeline with exponential backoff retry.
@@ -269,6 +279,8 @@ def run_pipeline_with_retry(
                 report_type=report_type,
                 recipients=recipients,
                 company_id=company_id,
+                api_key=api_key,
+                model=model,
             )
             return state
         except Exception as exc:

@@ -1,10 +1,21 @@
 import { useEffect, useState } from 'react';
 import {
   Database, Brain, Clock, Mail, MessageSquare, FileOutput,
-  CheckCircle, XCircle, Loader2,
+  CheckCircle, XCircle, Loader2, KeyRound, Eye, EyeOff,
 } from 'lucide-react';
-import { getHealth, getDbStats, getRagStats } from '../api/client';
+import {
+  getHealth, getDbStats, getRagStats,
+  getLLMSettings, saveLLMSettings, clearLLMSettings,
+} from '../api/client';
 import type { HealthStatus, DbStats, RagStats } from '../types';
+
+const MODEL_OPTIONS = [
+  'gpt-4o',
+  'gpt-4o-mini',
+  'gpt-4.1',
+  'gpt-4.1-mini',
+  'o4-mini',
+];
 
 export default function Settings() {
   const [health, setHealth] = useState<HealthStatus | null>(null);
@@ -42,6 +53,12 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <h2 className="text-xl font-bold text-gray-900">Ayarlar</h2>
+
+      {/* OpenAI credentials */}
+      <LLMSettingsCard
+        serverKeyConfigured={health?.server_llm_key_configured ?? false}
+        defaultModel={health?.default_model || 'gpt-4o'}
+      />
 
       {/* Database */}
       <SettingsCard icon={Database} title="Veritabani">
@@ -140,6 +157,134 @@ export default function Settings() {
         Proactive Reporting Agent v{health?.version || '0.6.0'} | Python + LangGraph + React
       </div>
     </div>
+  );
+}
+
+function LLMSettingsCard({
+  serverKeyConfigured,
+  defaultModel,
+}: {
+  serverKeyConfigured: boolean;
+  defaultModel: string;
+}) {
+  const stored = getLLMSettings();
+  const [apiKey, setApiKey] = useState(stored.apiKey);
+  const [model, setModel] = useState(stored.model || defaultModel);
+  const [showKey, setShowKey] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  const isCustomModel = model !== '' && !MODEL_OPTIONS.includes(model);
+  const hasKey = apiKey.trim().length > 0;
+
+  function handleSave() {
+    saveLLMSettings({ apiKey: apiKey.trim(), model: model.trim() });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
+  function handleClear() {
+    clearLLMSettings();
+    setApiKey('');
+    setModel(defaultModel);
+    setShowKey(false);
+  }
+
+  return (
+    <SettingsCard icon={KeyRound} title="OpenAI Anahtari ve Model">
+      <p className="text-xs text-gray-500">
+        Anahtariniz yalnizca bu tarayicida saklanir ve sadece rapor calistirdiginizda
+        istek basligi olarak gonderilir. Sunucu anahtari diske yazmaz.
+      </p>
+
+      <div className="space-y-1">
+        <label className="text-sm text-gray-500" htmlFor="openai-key">API Anahtari</label>
+        <div className="flex gap-2">
+          <input
+            id="openai-key"
+            type={showKey ? 'text' : 'password'}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-..."
+            autoComplete="off"
+            spellCheck={false}
+            className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono
+                       focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <button
+            type="button"
+            onClick={() => setShowKey((v) => !v)}
+            aria-label={showKey ? 'Anahtari gizle' : 'Anahtari goster'}
+            className="rounded-lg border border-gray-200 px-3 text-gray-500 hover:bg-gray-50"
+          >
+            {showKey ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-sm text-gray-500" htmlFor="openai-model">Model</label>
+        <select
+          id="openai-model"
+          value={isCustomModel ? 'custom' : model}
+          onChange={(e) => setModel(e.target.value === 'custom' ? '' : e.target.value)}
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm
+                     focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          {MODEL_OPTIONS.map((m) => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+          <option value="custom">Diger (elle gir)</option>
+        </select>
+
+        {isCustomModel || model === '' ? (
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="orn. gpt-4.1-nano"
+            spellCheck={false}
+            className="mt-2 w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono
+                       focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        ) : null}
+      </div>
+
+      {!hasKey && !serverKeyConfigured && (
+        <p className="text-xs text-amber-600">
+          Anahtar girilmedi ve sunucuda da tanimli degil — pipeline calisir ama
+          LLM adimlari (yazar, degerlendirici) atlanir.
+        </p>
+      )}
+      {!hasKey && serverKeyConfigured && (
+        <p className="text-xs text-gray-500">
+          Anahtar girilmedi — sunucudaki varsayilan anahtar kullanilir.
+        </p>
+      )}
+
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          onClick={handleSave}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white
+                     hover:bg-blue-700"
+        >
+          Kaydet
+        </button>
+        <button
+          type="button"
+          onClick={handleClear}
+          className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600
+                     hover:bg-gray-50"
+        >
+          Temizle
+        </button>
+        {saved && (
+          <span className="flex items-center gap-1 text-xs text-green-600">
+            <CheckCircle size={14} /> Kaydedildi
+          </span>
+        )}
+      </div>
+    </SettingsCard>
   );
 }
 

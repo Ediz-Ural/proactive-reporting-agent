@@ -94,6 +94,13 @@ export interface HealthStatus {
     message: string;
   };
   scheduler_enabled: boolean;
+  server_llm_key_configured: boolean;
+  default_model: string;
+}
+
+export interface LLMSettings {
+  apiKey: string;
+  model: string;
 }
 
 export interface DbStats {

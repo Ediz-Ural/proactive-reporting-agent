@@ -8,30 +8,66 @@ from __future__ import annotations
 import json
 import logging
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# Per-run credentials supplied by the caller (an API request carrying the user's
+# own key). Never persisted — the value lives only for the duration of the run.
+_credentials: ContextVar[tuple[str, str] | None] = ContextVar("llm_credentials", default=None)
+
+
+@contextmanager
+def llm_credentials(api_key: str | None = None, model: str | None = None):
+    """
+    Bind an API key and/or model for every LLM call made inside the block.
+
+    Falls back to the values in settings for anything not supplied, so a run
+    without caller credentials behaves exactly as before.
+    """
+    if not api_key and not model:
+        yield
+        return
+
+    token = _credentials.set((api_key or "", model or ""))
+    try:
+        yield
+    finally:
+        _credentials.reset(token)
+
+
+def resolve_credentials() -> tuple[str, str]:
+    """Return the (api_key, model) in effect: caller-supplied first, then settings."""
+    from config.settings import settings
+
+    api_key, model = _credentials.get() or ("", "")
+    return api_key or settings.OPENAI_API_KEY, model or settings.OPENAI_MODEL
 
 
 def get_llm(temperature: float = 0.1):
     """
     Get a configured ChatOpenAI instance.
 
-    Returns:
-        ChatOpenAI instance, or None if API key is not configured.
-    """
-    from config.settings import settings
+    Uses the credentials bound by `llm_credentials` when present, otherwise the
+    ones from settings.
 
-    if not settings.OPENAI_API_KEY:
-        logger.warning("OPENAI_API_KEY not set — LLM calls will be skipped")
+    Returns:
+        ChatOpenAI instance, or None if no API key is available.
+    """
+    api_key, model = resolve_credentials()
+
+    if not api_key:
+        logger.warning("No OpenAI API key available — LLM calls will be skipped")
         return None
 
     from langchain_openai import ChatOpenAI
 
     return ChatOpenAI(
-        model=settings.OPENAI_MODEL,
+        model=model,
         temperature=temperature,
-        api_key=settings.OPENAI_API_KEY,
+        api_key=api_key,
     )
 
 
