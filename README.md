@@ -237,7 +237,6 @@ proactive-reporting-agent/
 │   ├── agents/        # one file per agent
 │   ├── tools/         # sql, analysis, rag, report, llm tools
 │   ├── graph/         # LangGraph state + workflow DAG
-│   ├── models/        # Pydantic schemas
 │   ├── api.py         # FastAPI app
 │   ├── auth.py        # JWT auth
 │   └── scheduler.py   # APScheduler job
