@@ -138,6 +138,22 @@ class SendExistingReportRequest(BaseModel):
     recipients: list[str] = []
 
 
+# ── Helper: DataFrame → JSON ─────────────────────────────────────────────────
+
+def _records(df: pd.DataFrame) -> list[dict]:
+    """
+    Convert query results to JSON-safe records.
+
+    A NULL column value arrives as NaN/NaT, which the JSON encoder rejects
+    outright ("Out of range float values are not JSON compliant"), so a single
+    company with no segment set would 500 the whole endpoint. Missing values
+    become null instead.
+    """
+    if df.empty:
+        return []
+    return df.astype(object).where(pd.notna(df), None).to_dict("records")
+
+
 # ── Helper: read JSONL runs ──────────────────────────────────────────────────
 
 METRICS_PATH = Path("data/metrics/pipeline_runs.jsonl")
@@ -527,7 +543,7 @@ async def db_stats(current_user: TokenData = Depends(get_current_user)):
                 "min": str(date_range["min_date"].iloc[0]) if not date_range.empty else "",
                 "max": str(date_range["max_date"].iloc[0]) if not date_range.empty else "",
             },
-            "categories": categories.to_dict("records") if not categories.empty else [],
+            "categories": _records(categories),
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Database query failed: {exc}")
@@ -557,7 +573,7 @@ async def company_stats(admin: TokenData = Depends(require_admin)):
         ORDER BY total_revenue DESC
     """)
 
-    companies = df.to_dict("records") if not df.empty else []
+    companies = _records(df)
 
     totals = {
         "total_orders": int(df["total_orders"].sum()) if not df.empty else 0,
@@ -673,7 +689,7 @@ async def list_companies(admin: TokenData = Depends(require_admin)):
 
     engine = get_db_engine()
     df = pd.read_sql(text("SELECT * FROM companies ORDER BY id"), engine)
-    return {"companies": df.to_dict("records")}
+    return {"companies": _records(df)}
 
 
 @app.get("/admin/users")
@@ -688,7 +704,7 @@ async def list_users(admin: TokenData = Depends(require_admin)):
         FROM users u JOIN companies c ON u.company_id = c.id
         ORDER BY u.id
     """), engine)
-    return {"users": df.to_dict("records")}
+    return {"users": _records(df)}
 
 
 @app.post("/admin/send-report")

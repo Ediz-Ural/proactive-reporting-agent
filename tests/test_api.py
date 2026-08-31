@@ -540,3 +540,42 @@ class TestSecurityHeaders:
         assert "cdn.jsdelivr.net" in csp
         assert "default-src 'self'" in csp
         assert "sandbox" not in csp
+
+
+class TestNullSafeSerialization:
+    """A NULL column value must serialise as null, not crash the endpoint."""
+
+    def test_missing_values_become_null(self):
+        """_records turns NaN/NaT into None so the JSON encoder accepts them."""
+        import pandas as pd
+
+        from src.api import _records
+
+        df = pd.DataFrame([
+            {"id": 1, "name": "A", "segment": "Consumer"},
+            {"id": 2, "name": "B", "segment": None},
+        ])
+        records = _records(df)
+
+        assert records[1]["segment"] is None
+        assert records[0]["segment"] == "Consumer"
+        assert records[1]["name"] == "B"
+
+    def test_empty_frame_returns_empty_list(self):
+        import pandas as pd
+
+        from src.api import _records
+
+        assert _records(pd.DataFrame()) == []
+
+    def test_records_are_json_encodable(self):
+        """The failure mode was at encoding time, so encode the result."""
+        import json
+
+        import pandas as pd
+
+        from src.api import _records
+
+        df = pd.DataFrame([{"id": 1, "segment": None, "revenue": 12.5}])
+
+        assert json.dumps(_records(df)) is not None
