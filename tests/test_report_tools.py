@@ -145,3 +145,64 @@ class TestSaveReportToFile:
             filename="report.md",
         )
         assert Path(path).exists()
+
+
+class TestReportHtmlIsInert:
+    """
+    Report text comes from uploaded rows and LLM output, and the dashboard shows
+    the rendered HTML — so markup in the source must never survive as markup.
+    """
+
+    def test_script_tag_is_escaped(self):
+        from src.tools.report_tools import markdown_to_html
+
+        html = markdown_to_html("Satislar arttı <script>alert(1)</script>")
+
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+
+    def test_event_handler_is_escaped(self):
+        from src.tools.report_tools import markdown_to_html
+
+        html = markdown_to_html('<img src=x onerror="steal(localStorage)">')
+
+        assert "<img" not in html
+        assert "onerror" not in html or "&lt;img" in html
+
+    def test_injection_from_a_data_row_is_escaped(self):
+        """A product name carrying markup arrives through the report text."""
+        from src.tools.report_tools import markdown_to_html
+
+        row = "| <svg onload=alert(1)> | 100 |"
+        html = markdown_to_html("| Urun | Ciro |" + chr(10) + "|---|---|" + chr(10) + row)
+
+        assert "<svg" not in html
+
+    def test_markdown_still_renders(self):
+        """Escaping must not break ordinary markdown."""
+        from src.tools.report_tools import markdown_to_html
+
+        source = chr(10).join(["## Ozet", "", "- **Ciro** artti", "- Kar & marj dustu"])
+        html = markdown_to_html(source)
+
+        assert "<h2>" in html
+        assert "<strong>" in html
+        assert "<li>" in html
+        assert "&amp;" in html
+
+    def test_template_context_is_escaped(self):
+        """Jinja autoescape covers the values interpolated around the report."""
+        from src.tools.report_tools import render_report
+
+        html = render_report("Rapor govdesi", context={"title": "<script>alert(1)</script>"})
+
+        assert "<script>alert(1)</script>" not in html
+        assert "Rapor govdesi" in html
+
+    def test_report_body_still_reaches_the_page(self):
+        """The converted markdown itself is not double-escaped by the template."""
+        from src.tools.report_tools import render_report
+
+        html = render_report("## Aylik Ozet")
+
+        assert "<h2>Aylik Ozet</h2>" in html

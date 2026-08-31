@@ -41,7 +41,15 @@ export default function ReportViewer({ contentMd, contentHtml }: ReportViewerPro
             <ReactMarkdown>{contentMd}</ReactMarkdown>
           </div>
         ) : (
-          <div dangerouslySetInnerHTML={{ __html: contentHtml || '' }} />
+          // Report HTML is built from database rows and LLM output, so it is
+          // rendered in a fully sandboxed iframe: no scripts, no same-origin
+          // access, no forms. Nothing inside it can reach the dashboard.
+          <iframe
+            title="Rapor HTML onizlemesi"
+            sandbox=""
+            srcDoc={contentHtml || ''}
+            className="w-full h-[520px] border-0 bg-white"
+          />
         )}
       </div>
     </div>

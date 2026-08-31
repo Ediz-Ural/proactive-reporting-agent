@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -16,21 +17,28 @@ TEMPLATE_DIR = Path(__file__).parent.parent.parent / "templates"
 
 def markdown_to_html(markdown_text: str) -> str:
     """
-    Convert markdown text to HTML.
+    Convert markdown text to HTML, escaping any raw HTML in the source.
+
+    Report text comes from database rows and LLM output, neither of which is
+    trusted, and the result is rendered in the dashboard — so markup embedded in
+    the source is escaped rather than passed through. Markdown syntax itself is
+    unaffected; only literal <, > and & become entities.
 
     Uses the `markdown` library if available, otherwise falls back
     to a simple regex-based conversion.
     """
+    safe_text = escape(markdown_text or "", quote=False)
+
     try:
         import markdown
 
         return markdown.markdown(
-            markdown_text,
+            safe_text,
             extensions=["tables", "fenced_code"],
         )
     except ImportError:
         logger.debug("markdown library not available — using simple regex conversion")
-        return _simple_md_to_html(markdown_text)
+        return _simple_md_to_html(safe_text)
 
 
 def render_report(
@@ -50,13 +58,15 @@ def render_report(
         Rendered HTML string.
     """
     from jinja2 import Environment, FileSystemLoader
+    from markupsafe import Markup
 
     context = context or {}
 
-    summary_html = markdown_to_html(draft_markdown)
+    # Escaped by markdown_to_html, so it is the one value allowed through as markup.
+    summary_html = Markup(markdown_to_html(draft_markdown))
 
     template_dir = str(TEMPLATE_DIR)
-    env = Environment(loader=FileSystemLoader(template_dir), autoescape=False)
+    env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
 
     try:
         template = env.get_template(template_name)
@@ -108,7 +118,11 @@ def save_report_to_file(
 # ── Simple fallback MD→HTML ──────────────────────────────────────────────────
 
 def _simple_md_to_html(text: str) -> str:
-    """Minimal markdown-to-HTML converter (no external deps)."""
+    """
+    Minimal markdown-to-HTML converter (no external deps).
+
+    Expects text whose HTML has already been escaped by `markdown_to_html`.
+    """
     html = text
 
     # Headers

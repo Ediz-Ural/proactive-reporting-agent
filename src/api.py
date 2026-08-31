@@ -56,6 +56,38 @@ app.add_middleware(
 )
 
 
+# ── Security headers ─────────────────────────────────────────────────────────
+
+# The interactive docs load Swagger UI from a CDN, so they get their own policy;
+# every other response is data and needs to load nothing at all.
+_DOCS_PATHS = ("/docs", "/redoc", "/docs/oauth2-redirect")
+_DOCS_CSP = (
+    "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; "
+    "script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' "
+    "https://cdn.jsdelivr.net; img-src 'self' data: https://fastapi.tiangolo.com"
+)
+_API_CSP = "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; sandbox"
+
+
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """
+    Attach security headers to every response.
+
+    Reports can carry markup that came from uploaded data, and browsers must
+    never render an API response as a document: the sandbox CSP plus nosniff
+    keeps a report body inert even if it is opened directly.
+    """
+    response = await call_next(request)
+
+    is_docs = request.url.path in _DOCS_PATHS
+    response.headers["Content-Security-Policy"] = _DOCS_CSP if is_docs else _API_CSP
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
+
+
 # ── Request / Response models ─────────────────────────────────────────────────
 
 class PipelineRequest(BaseModel):

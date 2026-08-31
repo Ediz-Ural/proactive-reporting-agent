@@ -504,3 +504,39 @@ class TestCORSHeaders:
             },
         )
         assert response.headers.get("access-control-allow-origin") == "http://localhost:3000"
+
+
+class TestSecurityHeaders:
+    """Every response carries headers that keep a browser from executing it."""
+
+    def test_json_response_is_sandboxed(self, client):
+        response = client.get("/health")
+        csp = response.headers["content-security-policy"]
+
+        assert "default-src 'none'" in csp
+        assert "frame-ancestors 'none'" in csp
+        assert "sandbox" in csp
+
+    def test_nosniff_and_referrer_policy(self, client):
+        response = client.get("/health")
+
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert response.headers["x-frame-options"] == "DENY"
+
+    def test_headers_present_on_errors_too(self, client):
+        """An unauthenticated request is still a response a browser may render."""
+        response = client.get("/reports")
+
+        assert response.status_code == 401
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert "default-src 'none'" in response.headers["content-security-policy"]
+
+    def test_docs_get_their_own_policy(self, client):
+        """Swagger UI needs its CDN, so /docs is the one page with a looser CSP."""
+        response = client.get("/docs")
+        csp = response.headers["content-security-policy"]
+
+        assert "cdn.jsdelivr.net" in csp
+        assert "default-src 'self'" in csp
+        assert "sandbox" not in csp

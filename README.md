@@ -274,6 +274,33 @@ CI runs the backend lint + tests and the frontend lint + build on every push and
 
 ---
 
+## Security
+
+Report text is assembled from uploaded rows and LLM output, and users keep their
+own OpenAI key in the browser — so the interesting question is what happens when
+markup reaches a page.
+
+- **Report HTML is inert.** `markdown_to_html` escapes markup in the source
+  before conversion, the Jinja template renders with autoescape on, and the
+  dashboard shows the result in a fully sandboxed `<iframe>` (no scripts, no
+  same-origin access, no forms). A `<script>` in a product name stays text at
+  every step.
+- **Content-Security-Policy.** The production bundle is served with
+  `script-src 'self'` and no inline script; API responses carry
+  `default-src 'none'; sandbox` plus `nosniff`, so an API URL opened directly
+  cannot render as a document. `/docs` gets its own policy for Swagger's CDN.
+- **Credentials.** The user's OpenAI key travels as a request header, is bound
+  to a single run, and is never written to the database or the logs. Passwords
+  are bcrypt hashes; JWTs are signed with `JWT_SECRET_KEY`, which must be
+  changed before any real deployment.
+- **Tenant isolation.** Every data query is parameterised and scoped by
+  `company_id` from the caller's token; only admins can address another company.
+
+The seeded demo accounts (`admin123` / `user123`) exist for local exploration.
+Remove them before exposing an instance to anyone.
+
+---
+
 ## Experiment Design
 
 The project compares agentic design patterns on the same dataset:
