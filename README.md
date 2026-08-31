@@ -19,7 +19,7 @@ isolation, and scripts for the agent-pattern experiments the project was built t
 - **RAG over past reports** — ChromaDB retrieval with temporal filtering, so a report never cites the future
 - **Evaluator-optimizer loop** — the report is scored and rewritten up to `MAX_EVALUATOR_ITERATIONS` times before it ships
 - **Delivery** — SMTP email with an HTML template, optional WhatsApp via Twilio
-- **Bring your own API key** — each user enters their own OpenAI key and model in the dashboard; it stays in their browser and is never stored server-side
+- **Bring your own API key** — each user enters their own OpenAI key and model in the dashboard; the key stays in their tab (`sessionStorage`) and is never stored server-side
 - **Multi-tenant API** — JWT auth, per-company data isolation, admin endpoints for companies, users, and data upload
 - **React dashboard** — pipeline progress, KPI cards, charts, report viewer, admin panel
 - **Scheduler** — APScheduler monthly job, disabled by default
@@ -143,10 +143,12 @@ deploying anywhere real.
 ### API keys
 
 Every user brings their own OpenAI credentials. Enter a key and pick a model
-under **Ayarlar** (Settings) in the dashboard: the key is kept in that browser's
-`localStorage` and sent as an `X-OpenAI-Key` header on the requests that run the
-pipeline. The server uses it for that run and never writes it to disk, so no key
-of yours ends up in the database, the logs, or a backup.
+under **Ayarlar** (Settings) in the dashboard: the key is held in that tab's
+`sessionStorage` and sent as an `X-OpenAI-Key` header on the requests that run
+the pipeline. The server uses it for that run and never writes it to disk, so no
+key of yours ends up in the database, the logs, or a backup — and closing the tab
+clears it from the browser too. The model preference is not a secret, so it is
+remembered across visits.
 
 `OPENAI_API_KEY` in `.env` is an optional fallback for runs that have no user
 behind them — the scheduler, `scripts/`, and direct `run_pipeline` calls. With
@@ -290,7 +292,9 @@ markup reaches a page.
   `default-src 'none'; sandbox` plus `nosniff`, so an API URL opened directly
   cannot render as a document. `/docs` gets its own policy for Swagger's CDN.
 - **Credentials.** The user's OpenAI key travels as a request header, is bound
-  to a single run, and is never written to the database or the logs. Passwords
+  to a single run, and is never written to the database or the logs. In the
+  browser it lives in `sessionStorage`, so it is scoped to one tab and does not
+  survive closing it. Passwords
   are bcrypt hashes; JWTs are signed with `JWT_SECRET_KEY`, which must be
   changed before any real deployment.
 - **Tenant isolation.** Every data query is parameterised and scoped by

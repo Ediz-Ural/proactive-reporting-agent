@@ -192,8 +192,10 @@ function LLMSettingsCard({
   return (
     <SettingsCard icon={KeyRound} title="OpenAI Anahtari ve Model">
       <p className="text-xs text-gray-500">
-        Anahtariniz yalnizca bu tarayicida saklanir ve sadece rapor calistirdiginizda
-        istek basligi olarak gonderilir. Sunucu anahtari diske yazmaz.
+        Anahtariniz yalnizca bu sekmede tutulur ve sadece rapor calistirdiginizda
+        istek basligi olarak gonderilir. Sunucu anahtari diske yazmaz; sekmeyi
+        kapattiginizda anahtar tarayicidan da silinir, yeniden girmeniz gerekir.
+        Model tercihiniz sir olmadigi icin kalici olarak hatirlanir.
       </p>
 
       <div className="space-y-1">

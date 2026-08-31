@@ -18,25 +18,48 @@ const api = axios.create({
 
 // ── LLM credentials ─────────────────────────────────────────────────────────
 // The user's own OpenAI key never leaves their browser except as a header on
-// the requests that actually run the pipeline. It is not stored server-side.
+// the requests that actually run the pipeline, and it is not stored
+// server-side. It lives in sessionStorage rather than localStorage, so it is
+// scoped to one tab and gone when that tab closes — nothing durable is left on
+// disk for a later visitor, another tab, or a script to read. The model is not
+// a secret, so it stays in localStorage as a convenience.
 
 const LLM_KEY_STORAGE = 'openai_api_key';
 const LLM_MODEL_STORAGE = 'openai_model';
 
+/**
+ * Move a key saved by an earlier version out of localStorage.
+ *
+ * Without this, a key stored before the switch would sit on disk forever while
+ * the app read a different location and never showed it.
+ */
+const migrateStoredKey = () => {
+  const stale = localStorage.getItem(LLM_KEY_STORAGE);
+  if (stale === null) return;
+
+  localStorage.removeItem(LLM_KEY_STORAGE);
+  if (stale && !sessionStorage.getItem(LLM_KEY_STORAGE)) {
+    sessionStorage.setItem(LLM_KEY_STORAGE, stale);
+  }
+};
+
+migrateStoredKey();
+
 export const getLLMSettings = (): LLMSettings => ({
-  apiKey: localStorage.getItem(LLM_KEY_STORAGE) || '',
+  apiKey: sessionStorage.getItem(LLM_KEY_STORAGE) || '',
   model: localStorage.getItem(LLM_MODEL_STORAGE) || '',
 });
 
 export const saveLLMSettings = ({ apiKey, model }: LLMSettings) => {
-  if (apiKey) localStorage.setItem(LLM_KEY_STORAGE, apiKey);
-  else localStorage.removeItem(LLM_KEY_STORAGE);
+  if (apiKey) sessionStorage.setItem(LLM_KEY_STORAGE, apiKey);
+  else sessionStorage.removeItem(LLM_KEY_STORAGE);
 
   if (model) localStorage.setItem(LLM_MODEL_STORAGE, model);
   else localStorage.removeItem(LLM_MODEL_STORAGE);
 };
 
 export const clearLLMSettings = () => {
+  sessionStorage.removeItem(LLM_KEY_STORAGE);
   localStorage.removeItem(LLM_KEY_STORAGE);
   localStorage.removeItem(LLM_MODEL_STORAGE);
 };
