@@ -3,13 +3,19 @@ Application settings using Pydantic Settings.
 All values can be overridden via environment variables or .env file.
 """
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
+
+DEFAULT_JWT_SECRET = "change-me-in-production-use-a-real-secret-key"
+MIN_JWT_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
+    # ── Environment ──────────────────────────────────────────────────────────
+    ENV: str = Field(default="development", description="development or production")
+
     # ── Auth ─────────────────────────────────────────────────────────────────
-    JWT_SECRET_KEY: str = Field(default="change-me-in-production-use-a-real-secret-key")
+    JWT_SECRET_KEY: str = Field(default=DEFAULT_JWT_SECRET)
     JWT_ALGORITHM: str = Field(default="HS256")
     JWT_EXPIRE_MINUTES: int = Field(default=480)  # 8 hours
 
@@ -61,6 +67,28 @@ class Settings(BaseSettings):
     LANGCHAIN_TRACING_V2: bool = Field(default=False)
     LANGCHAIN_API_KEY: str = Field(default="")
     LANGCHAIN_PROJECT: str = Field(default="proactive-reporting-agent")
+
+    @model_validator(mode="after")
+    def _require_real_jwt_secret_in_production(self) -> "Settings":
+        """Refuse to start in production with the shipped placeholder secret.
+
+        The default lives in a public repo, so anyone could forge tokens for a
+        deployment that never overrode it.
+        """
+        if self.ENV.strip().lower() not in ("production", "prod"):
+            return self
+        if self.JWT_SECRET_KEY == DEFAULT_JWT_SECRET:
+            raise ValueError(
+                "JWT_SECRET_KEY is still the default placeholder. Set it to a real "
+                "secret before running with ENV=production, e.g. "
+                "`python -c \"import secrets; print(secrets.token_urlsafe(32))\"`."
+            )
+        if len(self.JWT_SECRET_KEY) < MIN_JWT_SECRET_LENGTH:
+            raise ValueError(
+                f"JWT_SECRET_KEY must be at least {MIN_JWT_SECRET_LENGTH} characters "
+                f"when ENV=production (got {len(self.JWT_SECRET_KEY)})."
+            )
+        return self
 
     @property
     def database_url(self) -> str:
